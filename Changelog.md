@@ -1,5 +1,163 @@
 # Changelog
 
+## 1.4.1
+
+### Bug fixes:
+
+* Fix: Existing Lightning addresses were not loaded (#3367 #3368) @Kukks
+
+## 1.4.0
+
+BTCPay Server started in August 2017 and meanwhile has been evolving incrementally thanks to the feedback of the community.
+
+It was finally time to cleanup the UI/UX and technical debt we accumulated over the years.
+
+We enumerate here a lot of new features and bug fixes, but we do not enumerate the UI/UX changes, we dedicated a separate [blog post for this topic](https://blog.btcpayserver.org/btcpay-server-1-4-0/).
+
+The heavy lifting of this work has been mainly brought to you thanks to the collaboration of @dstrukt and @dennisreimann.
+We thank also all the testers we brought us feedback, and all of you who participated in the weekly design meetings.
+
+The work on the UI/UX is however never over and we will keep on improving it based on your feedback.
+
+Note: If you are using our docker deployment on a raspberry pi 4, there is a small chance your docker version does not support the new docker image.
+If you have any issue with raspberry pi 4, you need to update your docker version following steps on [this blog post](https://blog.samcater.com/fix-workaround-rpi4-docker-libseccomp2-docker-20/).
+Note that you do not need to update libseccomp2, our update process does this for you automatically.
+
+### New features:
+
+* Greenfield: Add a `missingPermission` field to 403 errors (#3195) @NicolasDorier @woutersamaey
+* Support for new TLS version of SMTP server (#3202) @NicolasDorier
+* Greenfield: Added field "StoreId" to a Payment Request (#3223) @woutersamaey
+* Greenfield: Can create a payment request without specifying currency (would then use store's default currency) (#3222) @NicolasDorier
+* Add login code, for easy login to BTCPay Server via a mobile device (#2504) @Kukks
+* Add LNUrl Auth support as second factor auth (#3083) @Kukks
+* Batch unarchive invoices (#3264) @dennisreimann
+
+### Bug fixes:
+
+* Fix: BTCPay would crash if running in an unexpected working directory (#1894 #3295) @NicolasDorier
+* Fix: Can't add security device on safari (#3197 #3322) @Kukks
+* If a root path was used, the Notification dropdown wouldn't automatically fetch new notifications @NicolasDorier
+* Clipboard wasn't working over http, mainly used in at home setups (#3296) @dennisreimann
+* Greenfield: Creating a payment request would fail if expiry was specified (#3222) @NicolasDorier
+* In wallet's receive if you copy a p2sh address, it would be truncated (#3218) @dennisreimann
+* Shopify: Fix partial payments. Generate an invoice based on outstanding amount instead of total. (#3193 #3203) @Kukks
+* BTCPay Server instance sends 2 emails after invoice is set as expired, paid or confirmed/complete (#968) @NicolasDorier
+* Greenfield: Payment Method update was impossible if using internal ln node while being guest (#2860) @NicolasDorier
+* Checkout: Error when changing payment method in invoice (#3075) @dennisreimann
+* Greenfield: `created` field of payment request should be a unix timestamp @woutersamaey (#3221)
+* Fix LN Node availability check (#3189) @dennisreimann
+* Fix CSP violations in payment button page (#3334) @dennisreimann
+
+### Improvements:
+
+* Use the invoice terminology Processing/Settled in the UI rather than Paid/Confirmed/Complete.
+* Add loading indicator for "Pay" button in POS terminal app (#3342 #3336) @ubolator
+* Do not use uppercase in urls (#921) @NicolasDorier
+* Add a copy Tor URL in the footer (#2692 #3290) @dennisreimann
+* Improve permissions error messages of Greenfield API (#3256 #3212 #3220 #3204 #2795) @NicolasDorier @Kukks
+* Greenfield API: Remove redundant/unused parameters in payment methods @ubolator
+* Greenfield: Getting the fee rate should work with CanViewStoreSettings permission (#3217) @woutersamaey
+* Add suggestion list for currency text inputs (#3347) @NicolasDorier
+* Add warning about the security tradeoff the paybutton (#3340) @NicolasDorier
+* Migrating from .NET 3.1 to .NET 6.0 @NicolasDorier
+* Use C# 10.0 @NicolasDorier
+
+### Breaking changes:
+
+* If you activated plugins, you will need to update them.
+* We removed support for ETH/ERC20
+* Greenfield: `created` field of payment request should be a unix timestamp @woutersamaey (#3221)
+* Some Rapsberry PI 4 deployment with old version of docker might experience issues (see [this blog post](https://blog.samcater.com/fix-workaround-rpi4-docker-libseccomp2-docker-20/) to update docker, libseccomp2 is already updated as part of our update flow)
+
+## 1.3.7
+
+### Improvements:
+
+* Update of Bitbank rate provider (#3157) @junderw
+
+### Bug fixes:
+
+* Fix visual bug when decoding PSBT (#3172) @dennisreimann
+* Swagger fixes: improve API docs and property types (#3170) @woutersamaey
+* Fix copy pay button code (#3175) @dennisreimann
+* Fix LN Node availability check (#3189) @dennisreimann
+* `available` property of nodes returned by /api/v1/server/info wasn't actually set (ee1a034c0ab7744a2988e5da874084bc7dfa8b73) @NicolasDorier
+* Format perk value correctly in crowdfund app (#3141) @bolatovumar
+* Invoice page: Dropdown magically disappears (#3167 #3169) @trigger67
+
+## 1.3.6
+
+### Improvements:
+
+* Fix breaking changes of LND API 0.14 @NicolasDorier
+
+## 1.3.5
+
+### Bug fixes:
+
+* Fix: Checkout page of for invoices of 0 amount shouldn't crash, but 404 @NicolasDorier
+* Swagger doc: Fix type of property cryptoCode (#3088) @ndeet
+* Fix bug with fraction amount display in crowdfund app (#3098) @bolatovumar
+* Swagger doc: Update Swagger docs for webhook event types (#3104) @bolatovumar
+* Payout/pull payment page would crash if no payment method are set on the store @satwo
+
+### Improvements:
+
+* Add crypto code for invoice and pull payment payout API response (#3099) @bolatovumar
+* Prevent creation of on-chain invoices below the dust limit (#3082) @satwo
+
+
+## 1.3.4
+
+### Bug fixes:
+
+* Fix: Do not crash when redirect url is not provided to Authorize page @Kukks
+* Fix: Disabling lightning should also disable LNURL @Kukks
+* Fix: Paging in payouts did not take additional parameters in consideration @Kukks
+* Fix: Payout actions button was misaligned @Kukks
+* Fix: Amount validation for payout creation min amount was missing @Kukks
+
+### Improvements:
+
+* Point of Sale Print view improvements (#3050) @satwo @dennisreimann
+* Upgrade to Bootstrap 5.1.3 @dennisreimann
+* Updates display names (#3036) @dstrukt
+
+## 1.3.3
+
+### Bug fixes:
+
+* LNAddress wasn't working if the store supported an altcoin @NicolasDorier
+* Fix maintainance view @dennisreimann
+
+## 1.3.2
+
+This feature include a critical security patch. The vulnerability impacts owner of shared instances which share their internal lightning nodes. Credits to @yilakb to have noticed us.
+
+### New Features:
+
+* Greenfield: Adds the Archive status to Invoice model @TheHazeEffect
+* Greenfield: Add pagination to the get invoices operation @TheHazeEffect
+
+### Bug fixes:
+
+* Crowdfunding topup invoice doesn't work when there isn't a perk added (#3048 #3064) @satwo
+* Crowdfund: Fix perk value display (#3060) @dennisreimann
+* Lightning address payment would fail if millisatoshi is not 0 mod 1000 on LND (#3056) @NicolasDorier
+* The Test Connection feature during lightning setup was hidding cause of failure @NicolasDorier
+* Creating a new invoice in payment request with LNURL activated would crash @NicolasDorier
+* Improve error reporting in (#3065) @NicolasDorier
+* After loading the Update PoS Settings page and selecting an item to edit, it will always show the price type selected as Fixed regardless of what the actual price type is. (#3049) @fabu21
+* Fixes label on Point of Sale page (#3037) @dstrukt
+
+### Improvements:
+
+* If no default payment method, the fallback should be in order of preference: BTC, then Lightning (via BOLT11)
+* UI Improvement of the maintenance page @dstrukt
+* In the invoice's details page, show the url of webhook's deliveries (#3034) @satwo
+* Improves upload button for files  (#3044) @dstrukt
+
 ## 1.3.1
 
 ### Bug fixes:

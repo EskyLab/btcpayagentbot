@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Client.Models;
+using BTCPayServer.Controllers;
 using BTCPayServer.Data;
 using BTCPayServer.Models.AppViewModels;
 using BTCPayServer.Payments;
@@ -17,7 +18,6 @@ using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBitcoin.DataEncoders;
 using Newtonsoft.Json.Linq;
-using NUglify.Helpers;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
@@ -56,7 +56,7 @@ namespace BTCPayServer.Services.Apps
             }
             return null;
         }
-        
+
         private async Task<ViewCrowdfundViewModel> GetInfo(AppData appData)
         {
             var settings = appData.GetSettings<CrowdfundSettings>();
@@ -68,7 +68,7 @@ namespace BTCPayServer.Services.Apps
                 lastResetDate = settings.StartDate.Value;
 
                 nextResetDate = lastResetDate.Value;
-                while (DateTime.Now >= nextResetDate)
+                while (DateTime.UtcNow >= nextResetDate)
                 {
                     lastResetDate = nextResetDate;
                     switch (resetEvery)
@@ -80,7 +80,6 @@ namespace BTCPayServer.Services.Apps
                             nextResetDate = lastResetDate.Value.AddDays(settings.ResetEveryAmount);
                             break;
                         case CrowdfundResetEvery.Month:
-
                             nextResetDate = lastResetDate.Value.AddMonths(settings.ResetEveryAmount);
                             break;
                         case CrowdfundResetEvery.Year:
@@ -102,15 +101,21 @@ namespace BTCPayServer.Services.Apps
                 .Where(entity => !string.IsNullOrEmpty(entity.Metadata.ItemCode))
                 .GroupBy(entity => entity.Metadata.ItemCode)
                 .ToDictionary(entities => entities.Key, entities => entities.Count());
-            
+
             Dictionary<string, decimal> perkValue = new Dictionary<string, decimal>();
             if (settings.DisplayPerksValue)
             {
                 perkValue = paidInvoices
-                    .Where(entity => !string.IsNullOrEmpty(entity.Metadata.ItemCode))
+                    .Where(entity => entity.Currency.Equals(settings.TargetCurrency, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(entity.Metadata.ItemCode))
                     .GroupBy(entity => entity.Metadata.ItemCode)
-                    .ToDictionary(entities => entities.Key, entities => 
-                        entities.Sum(entity => entity.GetPayments(true).Sum(payment => payment.GetCryptoPaymentData().GetValue())));
+                    .ToDictionary(entities => entities.Key, entities =>
+                        entities.Sum(entity => entity.GetPayments(true).Sum(pay =>
+                        {
+                            var paymentMethodId = pay.GetPaymentMethodId();
+                            var value = pay.GetCryptoPaymentData().GetValue() - pay.NetworkFee;
+                            var rate = entity.GetPaymentMethod(paymentMethodId).Rate;
+                            return rate * value;
+                        })));
             }
             var perks = Parse(settings.PerksTemplate, settings.TargetCurrency);
             if (settings.SortPerksByPopularity)
@@ -165,7 +170,7 @@ namespace BTCPayServer.Services.Apps
                     TotalContributors = paidInvoices.Length,
                     ProgressPercentage = (currentPayments.TotalCurrency / settings.TargetAmount) * 100,
                     PendingProgressPercentage = (pendingPayments.TotalCurrency / settings.TargetAmount) * 100,
-                    LastUpdated = DateTime.Now,
+                    LastUpdated = DateTime.UtcNow,
                     PaymentStats = currentPayments.ToDictionary(c => c.Key.ToString(), c => c.Value.Value),
                     PendingPaymentStats = pendingPayments.ToDictionary(c => c.Key.ToString(), c => c.Value.Value),
                     LastResetDate = lastResetDate,
@@ -197,84 +202,105 @@ namespace BTCPayServer.Services.Apps
             });
 
             // Old invoices may have invoices which were not tagged
-            invoices = invoices.Where(inv => appData.TagAllInvoices ||  inv.Version < InvoiceEntity.InternalTagSupport_Version ||
+            invoices = invoices.Where(inv => appData.TagAllInvoices || inv.Version < InvoiceEntity.InternalTagSupport_Version ||
                                              inv.InternalTags.Contains(GetAppInternalTag(appData.Id))).ToArray();
             return invoices;
         }
 
         public async Task<StoreData[]> GetOwnedStores(string userId)
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                return await ctx.UserStore
-                    .Where(us => us.ApplicationUserId == userId && us.Role == StoreRoles.Owner)
-                    .Select(u => u.StoreData)
-                    .ToArrayAsync();
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            return await ctx.UserStore
+                .Where(us => us.ApplicationUserId == userId && us.Role == StoreRoles.Owner)
+                .Select(u => u.StoreData)
+                .ToArrayAsync();
         }
 
         public async Task<bool> DeleteApp(AppData appData)
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                ctx.Apps.Add(appData);
-                ctx.Entry(appData).State = EntityState.Deleted;
-                return await ctx.SaveChangesAsync() == 1;
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            ctx.Apps.Add(appData);
+            ctx.Entry(appData).State = EntityState.Deleted;
+            return await ctx.SaveChangesAsync() == 1;
         }
 
         public async Task<ListAppsViewModel.ListAppViewModel[]> GetAllApps(string userId, bool allowNoUser = false, string storeId = null)
         {
-            using (var ctx = _ContextFactory.CreateContext())
+            using var ctx = _ContextFactory.CreateContext();
+            var listApps = await ctx.UserStore
+                .Where(us =>
+                    (allowNoUser && string.IsNullOrEmpty(userId) || us.ApplicationUserId == userId) &&
+                    (storeId == null || us.StoreDataId == storeId))
+                .Join(ctx.Apps, us => us.StoreDataId, app => app.StoreDataId,
+                    (us, app) =>
+                        new ListAppsViewModel.ListAppViewModel()
+                        {
+                            IsOwner = us.Role == StoreRoles.Owner,
+                            StoreId = us.StoreDataId,
+                            StoreName = us.StoreData.StoreName,
+                            AppName = app.Name,
+                            AppType = app.AppType,
+                            Id = app.Id
+                        })
+                .ToArrayAsync();
+
+            foreach (ListAppsViewModel.ListAppViewModel app in listApps)
             {
-                return await ctx.UserStore
-                    .Where(us =>
-                        (allowNoUser && string.IsNullOrEmpty(userId) || us.ApplicationUserId == userId) &&
-                        (storeId == null || us.StoreDataId == storeId))
-                    .Join(ctx.Apps, us => us.StoreDataId, app => app.StoreDataId,
-                        (us, app) =>
-                            new ListAppsViewModel.ListAppViewModel()
-                            {
-                                IsOwner = us.Role == StoreRoles.Owner,
-                                StoreId = us.StoreDataId,
-                                StoreName = us.StoreData.StoreName,
-                                AppName = app.Name,
-                                AppType = app.AppType,
-                                Id = app.Id
-                            })
-                    .ToArrayAsync();
+                app.ViewStyle = await GetAppViewStyleAsync(app.Id, app.AppType);
             }
+
+            return listApps;
+        }
+
+        public async Task<string> GetAppViewStyleAsync(string appId, string appType)
+        {
+            AppType appTypeEnum = Enum.Parse<AppType>(appType);
+            AppData appData = await GetApp(appId, appTypeEnum, false);
+            var settings = appData.GetSettings<UIAppsController.PointOfSaleSettings>();
+
+            string style;
+            switch (appTypeEnum)
+            {
+                case AppType.PointOfSale:
+                    string posViewStyle = (settings.EnableShoppingCart ? PosViewType.Cart : settings.DefaultView).ToString();
+                    style = typeof(PosViewType).DisplayName(posViewStyle);
+                    break;
+                case AppType.Crowdfund:
+                    style = string.Empty;
+                    break;
+                default:
+                    style = string.Empty;
+                    break;
+            }
+
+            return style;
         }
 
         public async Task<List<AppData>> GetApps(string[] appIds, bool includeStore = false)
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                var query = ctx.Apps
-                    .Where(us => appIds.Contains(us.Id));
+            using var ctx = _ContextFactory.CreateContext();
+            var query = ctx.Apps
+                .Where(us => appIds.Contains(us.Id));
 
-                if (includeStore)
-                {
-                    query = query.Include(data => data.StoreData);
-                }
-                return await query.ToListAsync();
+            if (includeStore)
+            {
+                query = query.Include(data => data.StoreData);
             }
+            return await query.ToListAsync();
         }
 
         public async Task<AppData> GetApp(string appId, AppType? appType, bool includeStore = false)
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                var query = ctx.Apps
-                    .Where(us => us.Id == appId &&
-                                 (appType == null || us.AppType == appType.ToString()));
+            using var ctx = _ContextFactory.CreateContext();
+            var query = ctx.Apps
+                .Where(us => us.Id == appId &&
+                             (appType == null || us.AppType == appType.ToString()));
 
-                if (includeStore)
-                {
-                    query = query.Include(data => data.StoreData);
-                }
-                return await query.FirstOrDefaultAsync();
+            if (includeStore)
+            {
+                query = query.Include(data => data.StoreData);
             }
+            return await query.FirstOrDefaultAsync();
         }
 
         public Task<StoreData> GetStore(AppData app)
@@ -289,11 +315,11 @@ namespace BTCPayServer.Services.Apps
             {
                 var itemNode = new YamlMappingNode();
                 itemNode.Add("title", new YamlScalarNode(item.Title));
-                if(item.Price.Type!= ViewPointOfSaleViewModel.Item.ItemPrice.ItemPriceType.Topup)
+                if (item.Price.Type != ViewPointOfSaleViewModel.Item.ItemPrice.ItemPriceType.Topup)
                     itemNode.Add("price", new YamlScalarNode(item.Price.Value.ToStringInvariant()));
                 if (!string.IsNullOrEmpty(item.Description))
                 {
-                    itemNode.Add("description",  new YamlScalarNode(item.Description)
+                    itemNode.Add("description", new YamlScalarNode(item.Description)
                     {
                         Style = ScalarStyle.DoubleQuoted
                     });
@@ -316,7 +342,7 @@ namespace BTCPayServer.Services.Apps
 
                 if (item.PaymentMethods?.Any() is true)
                 {
-                    itemNode.Add("payment_methods", new YamlSequenceNode(item.PaymentMethods.Select(s=> new YamlScalarNode(s))));
+                    itemNode.Add("payment_methods", new YamlSequenceNode(item.PaymentMethods.Select(s => new YamlScalarNode(s))));
                 }
                 mappingNode.Add(item.Id, itemNode);
             }
@@ -341,7 +367,7 @@ namespace BTCPayServer.Services.Apps
                     ViewPointOfSaleViewModel.Item.ItemPrice price = new ViewPointOfSaleViewModel.Item.ItemPrice();
                     var pValue = c.GetDetail("price")?.FirstOrDefault();
 
-                    switch (c.GetDetailString("custom")??c.GetDetailString("price_type")?.ToLowerInvariant())
+                    switch (c.GetDetailString("custom") ?? c.GetDetailString("price_type")?.ToLowerInvariant())
                     {
                         case "topup":
                         case null when pValue is null:
@@ -476,7 +502,7 @@ namespace BTCPayServer.Services.Apps
                 {
                     return null;
                 }
-                return sequenceNode.Children.Select(node => (node as YamlScalarNode)?.Value).Where(s => s != null).Select(s=> _htmlSanitizer.Sanitize(s)).ToArray();
+                return sequenceNode.Children.Select(node => (node as YamlScalarNode)?.Value).Where(s => s != null).Select(s => _htmlSanitizer.Sanitize(s)).ToArray();
             }
         }
         private class PosScalar
@@ -489,39 +515,35 @@ namespace BTCPayServer.Services.Apps
         {
             if (userId == null || appId == null)
                 return null;
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                var app = await ctx.UserStore
-                                .Where(us => us.ApplicationUserId == userId && us.Role == StoreRoles.Owner)
-                                .SelectMany(us => us.StoreData.Apps.Where(a => a.Id == appId))
-                   .FirstOrDefaultAsync();
-                if (app == null)
-                    return null;
-                if (type != null && type.Value.ToString() != app.AppType)
-                    return null;
-                return app;
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            var app = await ctx.UserStore
+                            .Where(us => us.ApplicationUserId == userId && us.Role == StoreRoles.Owner)
+                            .SelectMany(us => us.StoreData.Apps.Where(a => a.Id == appId))
+               .FirstOrDefaultAsync();
+            if (app == null)
+                return null;
+            if (type != null && type.Value.ToString() != app.AppType)
+                return null;
+            return app;
         }
 
         public async Task UpdateOrCreateApp(AppData app)
         {
-            using (var ctx = _ContextFactory.CreateContext())
+            using var ctx = _ContextFactory.CreateContext();
+            if (string.IsNullOrEmpty(app.Id))
             {
-                if (string.IsNullOrEmpty(app.Id))
-                {
-                    app.Id = Encoders.Base58.EncodeData(RandomUtils.GetBytes(20));
-                    app.Created = DateTimeOffset.Now;
-                    await ctx.Apps.AddAsync(app);
-                }
-                else
-                {
-                    ctx.Apps.Update(app);
-                    ctx.Entry(app).Property(data => data.Created).IsModified = false;
-                    ctx.Entry(app).Property(data => data.Id).IsModified = false;
-                    ctx.Entry(app).Property(data => data.AppType).IsModified = false;
-                }
-                await ctx.SaveChangesAsync();
+                app.Id = Encoders.Base58.EncodeData(RandomUtils.GetBytes(20));
+                app.Created = DateTimeOffset.UtcNow;
+                await ctx.Apps.AddAsync(app);
             }
+            else
+            {
+                ctx.Apps.Update(app);
+                ctx.Entry(app).Property(data => data.Created).IsModified = false;
+                ctx.Entry(app).Property(data => data.Id).IsModified = false;
+                ctx.Entry(app).Property(data => data.AppType).IsModified = false;
+            }
+            await ctx.SaveChangesAsync();
         }
 
         private static bool TryParseJson(string json, out JObject result)

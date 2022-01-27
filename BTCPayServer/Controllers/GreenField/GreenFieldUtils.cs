@@ -3,9 +3,9 @@ using BTCPayServer.Client.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
-namespace BTCPayServer.Controllers.GreenField
+namespace BTCPayServer.Controllers.Greenfield
 {
-    public static class GreenFieldUtils
+    public static class GreenfieldUtils
     {
         public static IActionResult CreateValidationError(this ControllerBase controller, ModelStateDictionary modelState)
         {
@@ -33,6 +33,10 @@ namespace BTCPayServer.Controllers.GreenField
         public static IActionResult CreateAPIError(this ControllerBase controller, int httpCode, string errorCode, string errorMessage)
         {
             return controller.StatusCode(httpCode, new GreenfieldAPIError(errorCode, errorMessage));
+        }
+        public static IActionResult CreateAPIPermissionError(this ControllerBase controller, string missingPermission, string message = null)
+        {
+            return controller.StatusCode(403, new GreenfieldPermissionAPIError(missingPermission, message));
         }
     }
 }

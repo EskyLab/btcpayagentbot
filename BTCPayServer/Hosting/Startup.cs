@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using BTCPayServer.Configuration;
+using BTCPayServer.Controllers.Greenfield;
 using BTCPayServer.Data;
 using BTCPayServer.Fido2;
 using BTCPayServer.Filters;
@@ -13,15 +14,16 @@ using BTCPayServer.Plugins;
 using BTCPayServer.Security;
 using BTCPayServer.Services.Apps;
 using BTCPayServer.Storage;
+using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Fido2NetLib;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,8 +32,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
-using Microsoft.AspNetCore.Mvc;
-using BTCPayServer.Controllers.GreenField;
 
 namespace BTCPayServer.Hosting
 {
@@ -42,6 +42,8 @@ namespace BTCPayServer.Hosting
             Configuration = conf;
             _Env = env;
             LoggerFactory = loggerFactory;
+            Logs = new Logs();
+            Logs.Configure(loggerFactory);
         }
 
         readonly IWebHostEnvironment _Env;
@@ -50,10 +52,10 @@ namespace BTCPayServer.Hosting
             get; set;
         }
         public ILoggerFactory LoggerFactory { get; }
+        public Logs Logs { get; }
 
         public void ConfigureServices(IServiceCollection services)
         {
-            Logs.Configure(LoggerFactory);
             services.AddMemoryCache();
             services.AddDataProtection()
                 .SetApplicationName("BTCPay Server")
@@ -73,6 +75,8 @@ namespace BTCPayServer.Hosting
             services.PostConfigure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, opt =>
             {
                 opt.LoginPath = "/login";
+                opt.AccessDeniedPath = "/errors/403";
+                opt.LogoutPath = "/logout";
             });
 
             services.Configure<SecurityStampValidatorOptions>(opts =>
@@ -80,7 +84,7 @@ namespace BTCPayServer.Hosting
                 opts.ValidationInterval = TimeSpan.FromMinutes(5.0);
             });
 
-            services.AddBTCPayServer(Configuration);
+            services.AddBTCPayServer(Configuration, Logs);
             services.AddProviderStorage();
             services.AddSession();
             services.AddSignalR();
@@ -93,7 +97,7 @@ namespace BTCPayServer.Hosting
                     //They'll be used in a "first match wins" way in the order registered
                     config.AddStaticMetadataRepository();
                 });
-            var descriptor =services.Single(descriptor => descriptor.ServiceType == typeof(Fido2Configuration));
+            var descriptor = services.Single(descriptor => descriptor.ServiceType == typeof(Fido2Configuration));
             services.Remove(descriptor);
             services.AddScoped(provider =>
             {
@@ -106,17 +110,20 @@ namespace BTCPayServer.Hosting
                 };
             });
             services.AddScoped<Fido2Service>();
-            
-            var mvcBuilder= services.AddMvc(o =>
-            {
-                o.Filters.Add(new XFrameOptionsAttribute("DENY"));
-                o.Filters.Add(new XContentTypeOptionsAttribute("nosniff"));
-                o.Filters.Add(new XXSSProtectionAttribute());
-                o.Filters.Add(new ReferrerPolicyAttribute("same-origin"));
-                o.ModelBinderProviders.Insert(0, new ModelBinders.DefaultModelBinderProvider());
-                if (!Configuration.GetOrDefault<bool>("nocsp", false))
-                    o.Filters.Add(new ContentSecurityPolicyAttribute(CSPTemplate.AntiXSS));
-        })
+            services.AddSingleton<UserLoginCodeService>();
+			services.AddSingleton<LnurlAuthService>();
+            var mvcBuilder = services.AddMvc(o =>
+             {
+                 o.Filters.Add(new XFrameOptionsAttribute("DENY"));
+                 o.Filters.Add(new XContentTypeOptionsAttribute("nosniff"));
+                 o.Filters.Add(new XXSSProtectionAttribute());
+                 o.Filters.Add(new ReferrerPolicyAttribute("same-origin"));
+                 o.ModelBinderProviders.Insert(0, new ModelBinders.DefaultModelBinderProvider());
+                 if (!Configuration.GetOrDefault<bool>("nocsp", false))
+                     o.Filters.Add(new ContentSecurityPolicyAttribute(CSPTemplate.AntiXSS));
+                 o.Filters.Add(new JsonHttpExceptionFilter());
+                 o.Filters.Add(new JsonObjectExceptionFilter());
+             })
             .ConfigureApiBehaviorOptions(options =>
             {
                 options.InvalidModelStateResponseFactory = context =>
@@ -131,11 +138,12 @@ namespace BTCPayServer.Hosting
                 o.PageViewLocationFormats.Add("/{0}.cshtml");
             })
             .AddNewtonsoftJson()
-#if RAZOR_RUNTIME_COMPILE
             .AddRazorRuntimeCompilation()
-#endif
             .AddPlugins(services, Configuration, LoggerFactory)
             .AddControllersAsServices();
+
+            LowercaseTransformer.Register(services);
+            ValidateControllerNameTransformer.Register(services);
 
             services.TryAddScoped<ContentSecurityPolicies>();
             services.Configure<IdentityOptions>(options =>
@@ -199,23 +207,22 @@ namespace BTCPayServer.Hosting
             IOptions<DataDirectories> dataDirectories,
             ILoggerFactory loggerFactory)
         {
+            Logs.Configure(loggerFactory);
             Logs.Configuration.LogInformation($"Root Path: {options.RootPath}");
             if (options.RootPath.Equals("/", StringComparison.OrdinalIgnoreCase))
             {
-                ConfigureCore(app, env, prov, loggerFactory, dataDirectories);
+                ConfigureCore(app, env, prov, dataDirectories);
             }
             else
             {
                 app.Map(options.RootPath, appChild =>
                 {
-                    ConfigureCore(appChild, env, prov, loggerFactory, dataDirectories);
+                    ConfigureCore(appChild, env, prov, dataDirectories);
                 });
             }
         }
-        private static void ConfigureCore(IApplicationBuilder app, IWebHostEnvironment env, IServiceProvider prov, ILoggerFactory loggerFactory, IOptions<DataDirectories> dataDirectories)
+        private void ConfigureCore(IApplicationBuilder app, IWebHostEnvironment env, IServiceProvider prov, IOptions<DataDirectories> dataDirectories)
         {
-            Logs.Configure(loggerFactory);
-            app.UsePlugins();
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -230,7 +237,7 @@ namespace BTCPayServer.Hosting
             forwardingOptions.ForwardedHeaders = ForwardedHeaders.All;
             app.UseForwardedHeaders(forwardingOptions);
 
-            app.UseStatusCodePagesWithReExecute("/Error/Handle", "?statusCode={0}");
+            app.UseStatusCodePagesWithReExecute("/errors/{0}");
 
             app.UsePayServer();
             app.UseRouting();
@@ -263,9 +270,11 @@ namespace BTCPayServer.Hosting
             {
                 AppHub.Register(endpoints);
                 PaymentRequestHub.Register(endpoints);
+                endpoints.MapRazorPages();
                 endpoints.MapControllers();
-                endpoints.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}");
+                endpoints.MapControllerRoute("default", "{controller:validate=UIHome}/{action:lowercase=Index}/{id?}");
             });
+            app.UsePlugins();
         }
     }
 }

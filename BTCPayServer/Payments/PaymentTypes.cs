@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 #if ALTCOINS
-using BTCPayServer.Services.Altcoins.Ethereum.Payments;
 using BTCPayServer.Services.Altcoins.Monero.Payments;
 #endif
 using BTCPayServer.Services.Invoices;
@@ -20,7 +19,6 @@ namespace BTCPayServer.Payments
             BTCLike, LightningLike, LNURLPay,
 #if ALTCOINS
             MoneroLike,
-            EthereumPaymentType.Instance
 #endif
         };
         /// <summary>
@@ -86,7 +84,7 @@ namespace BTCPayServer.Payments
         public abstract string InvoiceViewPaymentPartialName { get; }
 
         public abstract object GetGreenfieldData(ISupportedPaymentMethod supportedPaymentMethod, bool canModifyStore);
-        
+
         public virtual bool IsPaymentType(string paymentType)
         {
             return IsPaymentTypeBase(paymentType);
@@ -97,7 +95,7 @@ namespace BTCPayServer.Payments
             paymentType = paymentType?.ToLowerInvariant();
             return new[]
             {
-                GetId().Replace("-", "", StringComparison.InvariantCulture), 
+                GetId().Replace("-", "", StringComparison.InvariantCulture),
                 ToStringNormalized()
             }.Contains(
                 paymentType,

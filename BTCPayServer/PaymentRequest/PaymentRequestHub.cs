@@ -20,7 +20,7 @@ namespace BTCPayServer.PaymentRequest
 {
     public class PaymentRequestHub : Hub
     {
-        private readonly PaymentRequestController _PaymentRequestController;
+        private readonly UIPaymentRequestController _PaymentRequestController;
         public const string InvoiceCreated = "InvoiceCreated";
         public const string PaymentReceived = "PaymentReceived";
         public const string InfoUpdated = "InfoUpdated";
@@ -28,7 +28,7 @@ namespace BTCPayServer.PaymentRequest
         public const string CancelInvoiceError = "CancelInvoiceError";
         public const string InvoiceCancelled = "InvoiceCancelled";
 
-        public PaymentRequestHub(PaymentRequestController paymentRequestController)
+        public PaymentRequestHub(UIPaymentRequestController paymentRequestController)
         {
             _PaymentRequestController = paymentRequestController;
         }
@@ -103,7 +103,8 @@ namespace BTCPayServer.PaymentRequest
         public PaymentRequestStreamer(EventAggregator eventAggregator,
             IHubContext<PaymentRequestHub> hubContext,
             PaymentRequestRepository paymentRequestRepository,
-            PaymentRequestService paymentRequestService) : base(eventAggregator)
+            PaymentRequestService paymentRequestService,
+            Logs logs) : base(eventAggregator, logs)
         {
             _HubContext = hubContext;
             _PaymentRequestRepository = paymentRequestRepository;
@@ -150,7 +151,7 @@ namespace BTCPayServer.PaymentRequest
             {
                 foreach (var paymentId in PaymentRequestRepository.GetPaymentIdsFromInternalTags(invoiceEvent.Invoice))
                 {
-                    if (invoiceEvent.Name == InvoiceEvent.ReceivedPayment || invoiceEvent.Name == InvoiceEvent.MarkedCompleted  || invoiceEvent.Name == InvoiceEvent.MarkedInvalid)
+                    if (invoiceEvent.Name == InvoiceEvent.ReceivedPayment || invoiceEvent.Name == InvoiceEvent.MarkedCompleted || invoiceEvent.Name == InvoiceEvent.MarkedInvalid)
                     {
                         await _PaymentRequestService.UpdatePaymentRequestStateIfNeeded(paymentId);
                         var data = invoiceEvent.Payment?.GetCryptoPaymentData();
@@ -181,7 +182,7 @@ namespace BTCPayServer.PaymentRequest
                 {
                     QueueExpiryTask(
                         updated.PaymentRequestId,
-                        expiry.Value,
+                        expiry.Value.UtcDateTime,
                         cancellationToken);
                 }
             }
@@ -191,7 +192,7 @@ namespace BTCPayServer.PaymentRequest
         {
             Task.Run(async () =>
             {
-                var delay = expiry - DateTime.Now;
+                var delay = expiry - DateTime.UtcNow;
                 if (delay > TimeSpan.Zero)
                     await Task.Delay(delay, cancellationToken);
                 await _PaymentRequestService.UpdatePaymentRequestStateIfNeeded(paymentRequestId);

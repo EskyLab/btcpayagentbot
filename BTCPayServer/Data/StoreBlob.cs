@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using BTCPayServer.Client.JsonConverters;
@@ -17,17 +18,19 @@ namespace BTCPayServer.Data
 {
     public class StoreBlob
     {
+        public static string StandardDefaultCurrency = "USD";
+        
         public StoreBlob()
         {
             InvoiceExpiration = TimeSpan.FromMinutes(15);
+            RefundBOLT11Expiration = TimeSpan.FromDays(30);
             MonitoringExpiration = TimeSpan.FromDays(1);
             PaymentTolerance = 0;
             ShowRecommendedFee = true;
             RecommendedFeeBlockTarget = 1;
             PaymentMethodCriteria = new List<PaymentMethodCriteria>();
         }
-
-
+        
         [JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
         public NetworkFeeMode NetworkFeeMode { get; set; }
 
@@ -40,12 +43,12 @@ namespace BTCPayServer.Data
         public bool ShowRecommendedFee { get; set; }
         public int RecommendedFeeBlockTarget { get; set; }
         string _DefaultCurrency;
-        public string DefaultCurrency 
-        { 
-            get 
-            { 
-                return string.IsNullOrEmpty(_DefaultCurrency) ? "USD" : _DefaultCurrency;
-            } 
+        public string DefaultCurrency
+        {
+            get
+            {
+                return string.IsNullOrEmpty(_DefaultCurrency) ? StandardDefaultCurrency : _DefaultCurrency;
+            }
             set
             {
                 _DefaultCurrency = value;
@@ -144,7 +147,7 @@ namespace BTCPayServer.Data
             {
                 if (network.DefaultRateRules.Length != 0)
                 {
-                    builder.AppendLine($"// Default rate rules for {network.CryptoCode}");
+                    builder.AppendLine(CultureInfo.InvariantCulture, $"// Default rate rules for {network.CryptoCode}");
                     foreach (var line in network.DefaultRateRules)
                     {
                         builder.AppendLine(line);
@@ -155,7 +158,7 @@ namespace BTCPayServer.Data
             }
 
             var preferredExchange = string.IsNullOrEmpty(PreferredExchange) ? CoinGeckoRateProvider.CoinGeckoName : PreferredExchange;
-            builder.AppendLine($"X_X = {preferredExchange}(X_X);");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"X_X = {preferredExchange}(X_X);");
 
             BTCPayServer.Rating.RateRules.TryParse(builder.ToString(), out var rules);
             rules.Spread = Spread;
@@ -168,16 +171,13 @@ namespace BTCPayServer.Data
         public EmailSettings EmailSettings { get; set; }
         public bool PayJoinEnabled { get; set; }
 
-        public StoreHints Hints { get; set; }
-
         [JsonExtensionData]
         public IDictionary<string, JToken> AdditionalData { get; set; } = new Dictionary<string, JToken>();
 
-        public class StoreHints
-        {
-            public bool Wallet { get; set; }
-            public bool Lightning { get; set; }
-        }
+        [DefaultValue(typeof(TimeSpan), "30.00:00:00")]
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.IgnoreAndPopulate)]
+        [JsonConverter(typeof(TimeSpanJsonConverter.Days))]
+        public TimeSpan RefundBOLT11Expiration { get; set; }
 
         public IPaymentFilter GetExcludedPaymentMethods()
         {

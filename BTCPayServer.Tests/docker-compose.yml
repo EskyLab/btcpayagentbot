@@ -15,7 +15,7 @@ services:
       TESTS_BTCRPCCONNECTION: server=http://bitcoind:43782;ceiwHEbqWI83:DwubwWsoo3
       TESTS_BTCNBXPLORERURL: http://nbxplorer:32838/
       TESTS_DB: "Postgres"
-      TESTS_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Database=btcpayserver
+      TESTS_POSTGRES: User ID=postgres;Include Error Detail=true;Host=postgres;Port=5432;Database=btcpayserver
       TESTS_HOSTNAME: tests
       TESTS_RUN_EXTERNAL_INTEGRATION: ${TESTS_RUN_EXTERNAL_INTEGRATION:-"false"}
       TESTS_AzureBlobStorageConnectionString: ${TESTS_AzureBlobStorageConnectionString:-none}
@@ -86,7 +86,7 @@ services:
     expose:
       - "4444"
   nbxplorer:
-    image: nicolasdorier/nbxplorer:2.2.7
+    image: nicolasdorier/nbxplorer:2.2.18
     restart: unless-stopped
     ports:
       - "32838:32838"
@@ -103,6 +103,7 @@ services:
       NBXPLORER_MINGAPSIZE: 5
       NBXPLORER_MAXGAPSIZE: 10
       NBXPLORER_VERBOSE: 1
+      NBXPLORER_EXPOSERPC: 1
       NBXPLORER_NOAUTH: 1
     links:
       - bitcoind
@@ -222,7 +223,7 @@ services:
       - "5432"
 
   merchant_lnd:
-    image: btcpayserver/lnd:v0.13.3-beta
+    image: btcpayserver/lnd:v0.14.1-beta
     restart: unless-stopped
     environment:
       LND_CHAIN: "btc"
@@ -256,7 +257,7 @@ services:
       - bitcoind
 
   customer_lnd:
-    image: btcpayserver/lnd:v0.13.3-beta
+    image: btcpayserver/lnd:v0.14.1-beta
     restart: unless-stopped
     environment:
       LND_CHAIN: "btc"

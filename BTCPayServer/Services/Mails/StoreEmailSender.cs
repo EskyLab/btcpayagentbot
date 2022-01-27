@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using BTCPayServer.Data;
+using BTCPayServer.Logging;
 using BTCPayServer.Services.Stores;
 
 namespace BTCPayServer.Services.Mails
@@ -10,7 +11,8 @@ namespace BTCPayServer.Services.Mails
         public StoreEmailSender(StoreRepository storeRepository,
                                 EmailSender fallback,
                                 IBackgroundJobClient backgroundJobClient,
-                                string storeId) : base(backgroundJobClient)
+                                string storeId,
+                                Logs logs) : base(backgroundJobClient, logs)
         {
             StoreId = storeId ?? throw new ArgumentNullException(nameof(storeId));
             StoreRepository = storeRepository;
@@ -30,7 +32,8 @@ namespace BTCPayServer.Services.Mails
                 return emailSettings;
             }
 
-            if (FallbackSender != null) return await FallbackSender?.GetEmailSettings();
+            if (FallbackSender != null)
+                return await FallbackSender?.GetEmailSettings();
             return null;
         }
     }

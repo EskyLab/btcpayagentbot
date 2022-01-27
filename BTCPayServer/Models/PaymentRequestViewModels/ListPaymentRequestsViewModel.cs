@@ -13,7 +13,6 @@ namespace BTCPayServer.Models.PaymentRequestViewModels
     public class ListPaymentRequestsViewModel : BasePagingViewModel
     {
         public List<ViewPaymentRequestViewModel> Items { get; set; }
-
     }
 
     public class UpdatePaymentRequestViewModel
@@ -37,7 +36,7 @@ namespace BTCPayServer.Models.PaymentRequestViewModels
             Amount = blob.Amount;
             Currency = blob.Currency;
             Description = blob.Description;
-            ExpiryDate = blob.ExpiryDate;
+            ExpiryDate = blob.ExpiryDate?.UtcDateTime;
             Email = blob.Email;
             CustomCSSLink = blob.CustomCSSLink;
             EmbeddedCSS = blob.EmbeddedCSS;
@@ -53,7 +52,7 @@ namespace BTCPayServer.Models.PaymentRequestViewModels
         [Range(double.Epsilon, double.PositiveInfinity, ErrorMessage = "Please provide an amount greater than 0")]
         public decimal Amount { get; set; }
 
-        [Display(Name = "The currency used for payment request. (e.g. BTC, LTC, USD, etc.)")]
+        [Display(Name = "Currency")]
         public string Currency { get; set; }
 
         [Display(Name = "Expiration Date")]
@@ -63,7 +62,7 @@ namespace BTCPayServer.Models.PaymentRequestViewModels
 
         [Display(Name = "Store")]
         public SelectList Stores { get; set; }
-        
+
         [EmailAddress]
         public string Email { get; set; }
 
@@ -82,13 +81,14 @@ namespace BTCPayServer.Models.PaymentRequestViewModels
         public ViewPaymentRequestViewModel(PaymentRequestData data)
         {
             Id = data.Id;
+            StoreId = data.StoreDataId;
             var blob = data.GetBlob();
             Archived = data.Archived;
             Title = blob.Title;
             Amount = blob.Amount;
             Currency = blob.Currency;
             Description = blob.Description;
-            ExpiryDate = blob.ExpiryDate;
+            ExpiryDate = blob.ExpiryDate?.UtcDateTime;
             Email = blob.Email;
             EmbeddedCSS = blob.EmbeddedCSS;
             CustomCSSLink = blob.CustomCSSLink;
@@ -121,6 +121,7 @@ namespace BTCPayServer.Models.PaymentRequestViewModels
         public string AmountDueFormatted { get; set; }
         public decimal Amount { get; set; }
         public string Id { get; set; }
+        public string StoreId { get; set; }
         public string Currency { get; set; }
         public DateTime? ExpiryDate { get; set; }
         public string Title { get; set; }

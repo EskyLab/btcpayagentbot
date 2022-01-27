@@ -14,11 +14,11 @@ namespace BTCPayServer.Events
             InvoiceEntity = invoiceEntity;
         }
 
-        public string InvoiceId  => InvoiceEntity.Id;
+        public string InvoiceId => InvoiceEntity.Id;
 
         public override string ToString()
         {
-            return string.Empty;
+            return $"Invoice payment method activated for invoice {InvoiceId} ({PaymentMethodId.ToPrettyString()})";
         }
     }
 }

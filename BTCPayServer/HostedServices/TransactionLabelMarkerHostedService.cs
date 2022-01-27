@@ -1,10 +1,12 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
+using BTCPayServer.Logging;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Services;
@@ -21,8 +23,8 @@ namespace BTCPayServer.HostedServices
         private readonly EventAggregator _eventAggregator;
         private readonly WalletRepository _walletRepository;
 
-        public TransactionLabelMarkerHostedService(EventAggregator eventAggregator, WalletRepository walletRepository) :
-            base(eventAggregator)
+        public TransactionLabelMarkerHostedService(EventAggregator eventAggregator, WalletRepository walletRepository, Logs logs) :
+            base(eventAggregator, logs)
         {
             _eventAggregator = eventAggregator;
             _walletRepository = walletRepository;
@@ -57,13 +59,13 @@ namespace BTCPayServer.HostedServices
                 {
                     labels.Add(UpdateTransactionLabel.PaymentRequestLabelTemplate(paymentId));
                 }
-                foreach (var appId in  AppService.GetAppInternalTags(invoiceEvent.Invoice))
+                foreach (var appId in AppService.GetAppInternalTags(invoiceEvent.Invoice))
                 {
                     labels.Add(UpdateTransactionLabel.AppLabelTemplate(appId));
                 }
 
-               
-                
+
+
                 _eventAggregator.Publish(new UpdateTransactionLabel(walletId, transactionId, labels));
             }
             else if (evt is UpdateTransactionLabel updateTransactionLabel)
@@ -129,7 +131,7 @@ namespace BTCPayServer.HostedServices
         public static (string color, Label label) InvoiceLabelTemplate(string invoice)
         {
             return ("#cedc21", new ReferenceLabel("invoice", invoice));
-        }        
+        }
         public static (string color, Label label) PaymentRequestLabelTemplate(string paymentRequestId)
         {
             return ("#489D77", new ReferenceLabel("payment-request", paymentRequestId));
@@ -144,7 +146,7 @@ namespace BTCPayServer.HostedServices
             return ("#51b13e", new ReferenceLabel("pj-exposed", invoice));
         }
 
-        public static  (string color, Label label) PayoutTemplate(string payoutId, string pullPaymentId, string walletId)
+        public static (string color, Label label) PayoutTemplate(string payoutId, string pullPaymentId, string walletId)
         {
             return ("#3F88AF", new PayoutLabel()
             {
@@ -160,7 +162,7 @@ namespace BTCPayServer.HostedServices
             var result = new StringBuilder();
             foreach (var transactionLabel in TransactionLabels)
             {
-                result.AppendLine(
+                result.AppendLine(CultureInfo.InvariantCulture,
                     $"Adding {transactionLabel.Value.Count} labels to {transactionLabel.Key} in wallet {WalletId}");
             }
 

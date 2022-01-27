@@ -8,8 +8,8 @@ using BTCPayServer.Data;
 using BTCPayServer.Logging;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BTCPayServer.HostedServices
 {
@@ -23,14 +23,14 @@ namespace BTCPayServer.HostedServices
         private readonly ApplicationDbContextFactory _dbContextFactory;
         private readonly IOptions<DataDirectories> _datadirs;
 
-        public DbMigrationsHostedService(InvoiceRepository invoiceRepository, SettingsRepository settingsRepository, ApplicationDbContextFactory dbContextFactory, IOptions<DataDirectories> datadirs)
+        public DbMigrationsHostedService(InvoiceRepository invoiceRepository, SettingsRepository settingsRepository, ApplicationDbContextFactory dbContextFactory, IOptions<DataDirectories> datadirs, Logs logs) : base(logs)
         {
             _invoiceRepository = invoiceRepository;
             _settingsRepository = settingsRepository;
             _dbContextFactory = dbContextFactory;
             _datadirs = datadirs;
         }
-        
+
 
         internal override Task[] InitializeTasks()
         {
@@ -95,8 +95,8 @@ namespace BTCPayServer.HostedServices
                     //
                     textSearch.Add(invoice.RefundMail);
                     // TODO: Are there more things to cache? PaymentData?
-                    InvoiceRepository.AddToTextSearch(ctx, 
-                        new InvoiceData { Id = invoice.Id, InvoiceSearchData = new List<InvoiceSearchData>() }, 
+                    InvoiceRepository.AddToTextSearch(ctx,
+                        new InvoiceData { Id = invoice.Id, InvoiceSearchData = new List<InvoiceSearchData>() },
                         textSearch.ToArray());
                 }
 

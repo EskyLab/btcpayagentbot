@@ -7,8 +7,11 @@ using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
+using BTCPayServer.Payments.Lightning;
+using BTCPayServer.Services;
 using BTCPayServer.Validation;
 using LNURL;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NBitcoin;
 
@@ -24,12 +27,16 @@ namespace BTCPayServer.Data.Payouts.LightningLike
 
         private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly UserService _userService;
+        private readonly IAuthorizationService _authorizationService;
 
         public LightningLikePayoutHandler(BTCPayNetworkProvider btcPayNetworkProvider,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory, UserService userService, IAuthorizationService authorizationService)
         {
             _btcPayNetworkProvider = btcPayNetworkProvider;
             _httpClientFactory = httpClientFactory;
+            _userService = userService;
+            _authorizationService = authorizationService;
         }
 
         public bool CanHandle(PaymentMethodId paymentMethod)
@@ -50,7 +57,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
                 : LightningLikePayoutHandlerClearnetNamedClient);
         }
 
-        public async Task<(IClaimDestination destination, string error)> ParseClaimDestination(PaymentMethodId paymentMethodId, string destination, bool validate)
+        public async Task<(IClaimDestination destination, string error)> ParseClaimDestination(PaymentMethodId paymentMethodId, string destination)
         {
             destination = destination.Trim();
             var network = _btcPayNetworkProvider.GetNetwork<BTCPayNetwork>(paymentMethodId.CryptoCode);
@@ -85,12 +92,8 @@ namespace BTCPayServer.Data.Payouts.LightningLike
                     ? new BoltInvoiceClaimDestination(destination, invoice)
                     : null;
 
-            if (result == null) return (null, "A valid BOLT11 invoice (with 30+ day expiry) or LNURL Pay or Lightning address was not provided.");
-            if (validate && (invoice.ExpiryDate.UtcDateTime - DateTime.UtcNow).Days < 30)
-            {
-                return (null,
-                    $"The BOLT11 invoice must have an expiry date of at least 30 days from submission (Provided was only {(invoice.ExpiryDate.UtcDateTime - DateTime.UtcNow).Days}).");
-            }
+            if (result == null)
+                return (null, "A valid BOLT11 invoice or LNURL Pay or Lightning address was not provided.");
             if (invoice.ExpiryDate.UtcDateTime < DateTime.UtcNow)
             {
                 return (null,
@@ -98,6 +101,19 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             }
 
             return (result, null);
+        }
+
+        public (bool valid, string error) ValidateClaimDestination(IClaimDestination claimDestination, PullPaymentBlob pullPaymentBlob)
+        {
+            if (claimDestination is not BoltInvoiceClaimDestination bolt)
+                return (true, null);
+            var invoice = bolt.PaymentRequest;
+            if ((invoice.ExpiryDate.UtcDateTime - DateTime.UtcNow) < pullPaymentBlob.BOLT11Expiration)
+            {
+                return (false,
+                    $"The BOLT11 invoice must have an expiry date of at least {(long)pullPaymentBlob.BOLT11Expiration.TotalDays} days from submission (Provided was only {(invoice.ExpiryDate.UtcDateTime - DateTime.UtcNow).Days}).");
+            }
+            return (true, null);
         }
 
         public IPayoutProof ParseProof(PayoutData payout)
@@ -129,16 +145,35 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             return Task.FromResult<StatusMessageModel>(null);
         }
 
-        public IEnumerable<PaymentMethodId> GetSupportedPaymentMethods()
+        public async Task<IEnumerable<PaymentMethodId>> GetSupportedPaymentMethods(StoreData storeData)
         {
-            return _btcPayNetworkProvider.GetAll().OfType<BTCPayNetwork>().Where(network => network.SupportLightning)
-                .Select(network => new PaymentMethodId(network.CryptoCode, LightningPaymentType.Instance));
+            var result = new List<PaymentMethodId>();
+            var methods = storeData.GetEnabledPaymentMethods(_btcPayNetworkProvider).Where(id => id.PaymentId.PaymentType == LightningPaymentType.Instance).OfType<LightningSupportedPaymentMethod>();
+            foreach (LightningSupportedPaymentMethod supportedPaymentMethod in methods)
+            {
+                if (!supportedPaymentMethod.IsInternalNode)
+                {
+                    result.Add(supportedPaymentMethod.PaymentId);
+                    continue;
+                }
+
+                foreach (UserStore storeDataUserStore in storeData.UserStores)
+                {
+                    if (!await _userService.IsAdminUser(storeDataUserStore.ApplicationUserId))
+                        continue;
+                    result.Add(supportedPaymentMethod.PaymentId);
+                    break;
+                }
+
+            }
+
+            return result;
         }
 
         public Task<IActionResult> InitiatePayment(PaymentMethodId paymentMethodId, string[] payoutIds)
         {
             return Task.FromResult<IActionResult>(new RedirectToActionResult("ConfirmLightningPayout",
-                "LightningLikePayout", new { cryptoCode = paymentMethodId.CryptoCode, payoutIds }));
+                "UILightningLikePayout", new { cryptoCode = paymentMethodId.CryptoCode, payoutIds }));
         }
     }
 }

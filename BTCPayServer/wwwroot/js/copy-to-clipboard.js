@@ -1,20 +1,35 @@
-window.copyToClipboard = function (e, text) {
-    if (navigator.clipboard) {
-        e.preventDefault();
-        var item = e.currentTarget;
-        var data = text || item.getAttribute('data-clipboard');
-        var confirm = item.querySelector('[data-clipboard-confirm]') || item;
-        var message = confirm.getAttribute('data-clipboard-confirm') || 'Copied ✔';
-        if (!confirm.dataset.clipboardInitialText) {
-            confirm.dataset.clipboardInitialText = confirm.innerText;
-            confirm.style.minWidth = confirm.getBoundingClientRect().width + 'px';
-        }
-        navigator.clipboard.writeText(data).then(function () {
-            confirm.innerText = message;
-            setTimeout(function(){ confirm.innerText = confirm.dataset.clipboardInitialText; }, 2500);
-        });
-        item.blur();
+const confirmCopy = (el, message) => {
+    el.innerText = message;
+    setTimeout(function () {
+        el.innerText = el.dataset.clipboardInitialText;
+    }, 2500);
+}
+
+window.copyToClipboard = function (e, data) {
+    e.preventDefault();
+    const item = e.target.closest('[data-clipboard]');
+    const confirm = item.querySelector('[data-clipboard-confirm]') || item;
+    const message = confirm.getAttribute('data-clipboard-confirm') || 'Copied ✔';
+    if (!confirm.dataset.clipboardInitialText) {
+        confirm.dataset.clipboardInitialText = confirm.innerText;
+        confirm.style.minWidth = confirm.getBoundingClientRect().width + 'px';
     }
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(data).then(function () {
+            confirmCopy(confirm, message);
+        });
+    } else {
+        const copyEl = document.createElement('textarea');
+        copyEl.style.position = 'absolute';
+        copyEl.style.opacity = '0';
+        copyEl.value = data;
+        document.body.appendChild(copyEl);
+        copyEl.select();
+        document.execCommand('copy');
+        copyEl.remove();
+        confirmCopy(confirm, message);
+    }
+    item.blur();
 }
 
 window.copyUrlToClipboard = function (e) {
@@ -22,7 +37,14 @@ window.copyUrlToClipboard = function (e) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("[data-clipboard]").forEach(item => {
-        item.addEventListener("click", window.copyToClipboard)
+    delegate('click', '[data-clipboard]', e => {
+        const data = e.target.closest('[data-clipboard]').getAttribute('data-clipboard')
+        window.copyToClipboard(e, data)
+    })
+    delegate('click', '[data-clipboard-target]', e => {
+        const selector = e.target.closest('[data-clipboard-target]').getAttribute('data-clipboard-target')
+        const target = document.querySelector(selector)
+        const data = target.innerText
+        window.copyToClipboard(e, data)
     })
 })

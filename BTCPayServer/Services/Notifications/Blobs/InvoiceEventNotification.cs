@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Routing;
 
 namespace BTCPayServer.Services.Notifications.Blobs
 {
-    internal class InvoiceEventNotification:BaseNotification
+    internal class InvoiceEventNotification : BaseNotification
     {
         private const string TYPE = "invoicestate";
         internal class Handler : NotificationHandler<InvoiceEventNotification>
@@ -29,7 +29,7 @@ namespace BTCPayServer.Services.Notifications.Blobs
             {
                 get
                 {
-                    return new (string identifier, string name)[] {(TYPE, "All invoice updates"),}
+                    return new (string identifier, string name)[] { (TYPE, "All invoice updates"), }
                         .Concat(TextMapping.Select(pair => ($"{TYPE}_{pair.Key}", $"Invoice {pair.Value}"))).ToArray();
                 }
             }
@@ -52,8 +52,8 @@ namespace BTCPayServer.Services.Notifications.Blobs
                 {
                     vm.Body = $"{baseStr} {TextMapping[notification.Event]}";
                 }
-                vm.ActionLink = _linkGenerator.GetPathByAction(nameof(InvoiceController.Invoice),
-                    "Invoice",
+                vm.ActionLink = _linkGenerator.GetPathByAction(nameof(UIInvoiceController.Invoice),
+                    "UIInvoice",
                     new { invoiceId = notification.InvoiceId }, _options.RootPath);
             }
         }

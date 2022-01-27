@@ -24,6 +24,8 @@ namespace BTCPayServer.Payments.Lightning
 {
     public class LightningListener : IHostedService
     {
+        public Logs Logs { get; }
+
         readonly EventAggregator _Aggregator;
         readonly InvoiceRepository _InvoiceRepository;
         private readonly IMemoryCache _memoryCache;
@@ -44,8 +46,10 @@ namespace BTCPayServer.Payments.Lightning
                               LightningLikePaymentHandler lightningLikePaymentHandler,
                               StoreRepository storeRepository,
                               IOptions<LightningNetworkOptions> options,
-                              PaymentService paymentService)
+                              PaymentService paymentService,
+                              Logs logs)
         {
+            Logs = logs;
             _Aggregator = aggregator;
             _InvoiceRepository = invoiceRepository;
             _memoryCache = memoryCache;
@@ -70,7 +74,7 @@ namespace BTCPayServer.Payments.Lightning
                         if (!_InstanceListeners.TryGetValue(instanceListenerKey, out var instanceListener) ||
                             !instanceListener.IsListening)
                         {
-                            instanceListener ??= new LightningInstanceListener(_InvoiceRepository, _Aggregator, lightningClientFactory, listenedInvoice.Network, GetLightningUrl(listenedInvoice.SupportedPaymentMethod), _paymentService);
+                            instanceListener ??= new LightningInstanceListener(_InvoiceRepository, _Aggregator, lightningClientFactory, listenedInvoice.Network, GetLightningUrl(listenedInvoice.SupportedPaymentMethod), _paymentService, Logs);
                             var status = await instanceListener.PollPayment(listenedInvoice, cancellation);
                             if (status is null ||
                                 status is LightningInvoiceStatus.Paid ||
@@ -111,53 +115,53 @@ namespace BTCPayServer.Payments.Lightning
         }
         private Task<List<ListenedInvoice>> GetListenedInvoices(string invoiceId)
         {
-            return _memoryCache.GetOrCreateAsync( GetCacheKey(invoiceId), async (cacheEntry) =>
-            {
-                var listenedInvoices = new List<ListenedInvoice>();
-                var invoice = await _InvoiceRepository.GetInvoice(invoiceId);
-                foreach (var paymentMethod in invoice.GetPaymentMethods()
-                                                              .Where(c => new []{PaymentTypes.LightningLike, LNURLPayPaymentType.Instance }.Contains(c.GetId().PaymentType)))
-                {
-                    LightningLikePaymentMethodDetails lightningMethod;
-                    LightningSupportedPaymentMethod lightningSupportedMethod;
-                    switch (paymentMethod.GetPaymentMethodDetails())
-                    {
-                        case LNURLPayPaymentMethodDetails lnurlPayPaymentMethodDetails:
+            return _memoryCache.GetOrCreateAsync(GetCacheKey(invoiceId), async (cacheEntry) =>
+           {
+               var listenedInvoices = new List<ListenedInvoice>();
+               var invoice = await _InvoiceRepository.GetInvoice(invoiceId);
+               foreach (var paymentMethod in invoice.GetPaymentMethods()
+                                                             .Where(c => new[] { PaymentTypes.LightningLike, LNURLPayPaymentType.Instance }.Contains(c.GetId().PaymentType)))
+               {
+                   LightningLikePaymentMethodDetails lightningMethod;
+                   LightningSupportedPaymentMethod lightningSupportedMethod;
+                   switch (paymentMethod.GetPaymentMethodDetails())
+                   {
+                       case LNURLPayPaymentMethodDetails lnurlPayPaymentMethodDetails:
 
-                            lightningMethod = lnurlPayPaymentMethodDetails;
-                            
-                            lightningSupportedMethod = lnurlPayPaymentMethodDetails.LightningSupportedPaymentMethod;
-                            
-                            break;
-                        case LightningLikePaymentMethodDetails { Activated: true } lightningLikePaymentMethodDetails:
-                            lightningMethod = lightningLikePaymentMethodDetails;
-                            lightningSupportedMethod = invoice.GetSupportedPaymentMethod<LightningSupportedPaymentMethod>()
-                                .FirstOrDefault(c => c.CryptoCode == paymentMethod.GetId().CryptoCode);
+                           lightningMethod = lnurlPayPaymentMethodDetails;
 
-                            break;
-                        default:
-                            continue;
-                    }
+                           lightningSupportedMethod = lnurlPayPaymentMethodDetails.LightningSupportedPaymentMethod;
+
+                           break;
+                       case LightningLikePaymentMethodDetails { Activated: true } lightningLikePaymentMethodDetails:
+                           lightningMethod = lightningLikePaymentMethodDetails;
+                           lightningSupportedMethod = invoice.GetSupportedPaymentMethod<LightningSupportedPaymentMethod>()
+                               .FirstOrDefault(c => c.CryptoCode == paymentMethod.GetId().CryptoCode);
+
+                           break;
+                       default:
+                           continue;
+                   }
 
                    if (lightningSupportedMethod == null || string.IsNullOrEmpty(lightningMethod.InvoiceId))
-                        continue;
-                    var network = _NetworkProvider.GetNetwork<BTCPayNetwork>(paymentMethod.GetId().CryptoCode);
+                       continue;
+                   var network = _NetworkProvider.GetNetwork<BTCPayNetwork>(paymentMethod.GetId().CryptoCode);
 
-                    listenedInvoices.Add(new ListenedInvoice()
-                    {
-                        Expiration = invoice.ExpirationTime,
-                        Uri = GetLightningUrl(lightningSupportedMethod).BaseUri.AbsoluteUri,
-                        PaymentMethodDetails = lightningMethod,
-                        SupportedPaymentMethod = lightningSupportedMethod,
-                        PaymentMethod = paymentMethod,
-                        Network = network,
-                        InvoiceId = invoice.Id
-                    });
-                }
-                var expiredIn = DateTimeOffset.UtcNow - invoice.ExpirationTime;
-                cacheEntry.AbsoluteExpiration = DateTimeOffset.UtcNow + (expiredIn >= TimeSpan.FromMinutes(5.0) ? expiredIn : TimeSpan.FromMinutes(5.0));
-                return listenedInvoices;
-            });
+                   listenedInvoices.Add(new ListenedInvoice()
+                   {
+                       Expiration = invoice.ExpirationTime,
+                       Uri = GetLightningUrl(lightningSupportedMethod).BaseUri.AbsoluteUri,
+                       PaymentMethodDetails = lightningMethod,
+                       SupportedPaymentMethod = lightningSupportedMethod,
+                       PaymentMethod = paymentMethod,
+                       Network = network,
+                       InvoiceId = invoice.Id
+                   });
+               }
+               var expiredIn = DateTimeOffset.UtcNow - invoice.ExpirationTime;
+               cacheEntry.AbsoluteExpiration = DateTimeOffset.UtcNow + (expiredIn >= TimeSpan.FromMinutes(5.0) ? expiredIn : TimeSpan.FromMinutes(5.0));
+               return listenedInvoices;
+           });
         }
 
         readonly ConcurrentDictionary<string, LightningInstanceListener> _ListeningInstances = new ConcurrentDictionary<string, LightningInstanceListener>();
@@ -188,7 +192,7 @@ namespace BTCPayServer.Payments.Lightning
                     var invoice = await _InvoiceRepository.GetInvoice(inv.InvoiceId);
                     await CreateNewLNInvoiceForBTCPayInvoice(invoice);
                 }
-                
+
             }));
             leases.Add(_Aggregator.Subscribe<Events.InvoicePaymentMethodActivated>(inv =>
             {
@@ -225,7 +229,7 @@ namespace BTCPayServer.Payments.Lightning
         private async Task CreateNewLNInvoiceForBTCPayInvoice(InvoiceEntity invoice)
         {
             var paymentMethods = invoice.GetPaymentMethods()
-                .Where(method => new []{PaymentTypes.LightningLike, LNURLPayPaymentType.Instance}.Contains(method.GetId().PaymentType))
+                .Where(method => new[] { PaymentTypes.LightningLike, LNURLPayPaymentType.Instance }.Contains(method.GetId().PaymentType))
                 .ToArray();
             var store = await _storeRepository.FindStore(invoice.StoreId);
             if (paymentMethods.Any())
@@ -238,13 +242,13 @@ namespace BTCPayServer.Payments.Lightning
                 {
                     try
                     {
-                        var oldDetails = (LightningLikePaymentMethodDetails) paymentMethod.GetPaymentMethodDetails();
+                        var oldDetails = (LightningLikePaymentMethodDetails)paymentMethod.GetPaymentMethodDetails();
                         if (!oldDetails.Activated)
                         {
                             continue;
                         }
 
-                        
+
                         if (oldDetails is LNURLPayPaymentMethodDetails lnurlPayPaymentMethodDetails && !string.IsNullOrEmpty(lnurlPayPaymentMethodDetails.BOLT11))
                         {
                             try
@@ -271,10 +275,10 @@ namespace BTCPayServer.Payments.Lightning
                             };
                             await _InvoiceRepository.NewPaymentDetails(invoice.Id, lnurlPayPaymentMethodDetails,
                                 paymentMethod.Network);
-                            
+
                             _Aggregator.Publish(new Events.InvoiceNewPaymentDetailsEvent(invoice.Id,
                                 lnurlPayPaymentMethodDetails, paymentMethod.GetId()));
-                            
+
                             continue;
                         }
 
@@ -393,6 +397,8 @@ namespace BTCPayServer.Payments.Lightning
 
     public class LightningInstanceListener
     {
+        public Logs Logs { get; }
+
         private readonly InvoiceRepository _invoiceRepository;
         private readonly EventAggregator _eventAggregator;
         private readonly BTCPayNetwork _network;
@@ -406,10 +412,11 @@ namespace BTCPayServer.Payments.Lightning
                                         LightningClientFactoryService lightningClientFactory,
                                         BTCPayNetwork network,
                                         LightningConnectionString connectionString,
-                                        PaymentService paymentService)
+                                        PaymentService paymentService,
+                                        Logs logs)
         {
-            if (connectionString == null)
-                throw new ArgumentNullException(nameof(connectionString));
+            ArgumentNullException.ThrowIfNull(connectionString);
+            Logs = logs;
             this._invoiceRepository = invoiceRepository;
             _eventAggregator = eventAggregator;
             this._network = network;
@@ -427,7 +434,7 @@ namespace BTCPayServer.Payments.Lightning
             var client = _lightningClientFactory.Create(ConnectionString, _network);
             LightningInvoice lightningInvoice = await client.GetInvoice(listenedInvoice.PaymentMethodDetails.InvoiceId, cancellation);
             if (lightningInvoice?.Status is LightningInvoiceStatus.Paid &&
-                await AddPayment(lightningInvoice, listenedInvoice.InvoiceId,listenedInvoice.PaymentMethod.GetId().PaymentType))
+                await AddPayment(lightningInvoice, listenedInvoice.InvoiceId, listenedInvoice.PaymentMethod.GetId().PaymentType))
             {
                 Logs.PayServer.LogInformation($"{_network.CryptoCode} (Lightning): Payment detected via polling on {listenedInvoice.InvoiceId}");
             }
@@ -451,38 +458,36 @@ namespace BTCPayServer.Payments.Lightning
             try
             {
                 var lightningClient = _lightningClientFactory.Create(ConnectionString, _network);
-                using (var session = await lightningClient.Listen(cancellation))
+                using var session = await lightningClient.Listen(cancellation);
+                // Just in case the payment arrived after our last poll but before we listened.
+                await PollAllListenedInvoices(cancellation);
+                if (_ErrorAlreadyLogged)
                 {
-                    // Just in case the payment arrived after our last poll but before we listened.
-                    await PollAllListenedInvoices(cancellation);
-                    if (_ErrorAlreadyLogged)
+                    Logs.PayServer.LogInformation($"{_network.CryptoCode} (Lightning): Could reconnect successfully to {ConnectionString.BaseUri}");
+                }
+                _ErrorAlreadyLogged = false;
+                while (!_ListenedInvoices.IsEmpty)
+                {
+                    var notification = await session.WaitInvoice(cancellation);
+                    if (!_ListenedInvoices.TryGetValue(notification.Id, out var listenedInvoice))
+                        continue;
+                    if (notification.Id == listenedInvoice.PaymentMethodDetails.InvoiceId &&
+                        (notification.BOLT11 == listenedInvoice.PaymentMethodDetails.BOLT11 ||
+                         BOLT11PaymentRequest.Parse(notification.BOLT11, _network.NBitcoinNetwork).PaymentHash ==
+                         listenedInvoice.PaymentMethodDetails.GetPaymentHash(_network.NBitcoinNetwork)))
                     {
-                        Logs.PayServer.LogInformation($"{_network.CryptoCode} (Lightning): Could reconnect successfully to {ConnectionString.BaseUri}");
-                    }
-                    _ErrorAlreadyLogged = false;
-                    while (!_ListenedInvoices.IsEmpty)
-                    {
-                        var notification = await session.WaitInvoice(cancellation);
-                        if (!_ListenedInvoices.TryGetValue(notification.Id, out var listenedInvoice))
-                            continue;
-                        if (notification.Id == listenedInvoice.PaymentMethodDetails.InvoiceId &&
-                            (notification.BOLT11 == listenedInvoice.PaymentMethodDetails.BOLT11 ||
-                             BOLT11PaymentRequest.Parse(notification.BOLT11, _network.NBitcoinNetwork).PaymentHash ==
-                             listenedInvoice.PaymentMethodDetails.GetPaymentHash(_network.NBitcoinNetwork)))
+                        if (notification.Status == LightningInvoiceStatus.Paid &&
+                            notification.PaidAt.HasValue && notification.Amount != null)
                         {
-                            if (notification.Status == LightningInvoiceStatus.Paid &&
-                                notification.PaidAt.HasValue && notification.Amount != null)
+                            if (await AddPayment(notification, listenedInvoice.InvoiceId, listenedInvoice.PaymentMethod.GetId().PaymentType))
                             {
-                                if (await AddPayment(notification, listenedInvoice.InvoiceId, listenedInvoice.PaymentMethod.GetId().PaymentType))
-                                {
-                                    Logs.PayServer.LogInformation($"{_network.CryptoCode} (Lightning): Payment detected via notification ({listenedInvoice.InvoiceId})");
-                                }
-                                _ListenedInvoices.TryRemove(notification.Id, out var _);
+                                Logs.PayServer.LogInformation($"{_network.CryptoCode} (Lightning): Payment detected via notification ({listenedInvoice.InvoiceId})");
                             }
-                            else if (notification.Status == LightningInvoiceStatus.Expired)
-                            {
-                                _ListenedInvoices.TryRemove(notification.Id, out var _);
-                            }
+                            _ListenedInvoices.TryRemove(notification.Id, out var _);
+                        }
+                        else if (notification.Status == LightningInvoiceStatus.Expired)
+                        {
+                            _ListenedInvoices.TryRemove(notification.Id, out var _);
                         }
                     }
                 }

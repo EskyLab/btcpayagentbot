@@ -5,15 +5,27 @@ using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
 using BTCPayServer.Payments;
-using PayoutData = BTCPayServer.Data.PayoutData;
 using Microsoft.AspNetCore.Mvc;
+using PayoutData = BTCPayServer.Data.PayoutData;
+using StoreData = BTCPayServer.Data.StoreData;
 
 public interface IPayoutHandler
 {
     public bool CanHandle(PaymentMethodId paymentMethod);
     public Task TrackClaim(PaymentMethodId paymentMethodId, IClaimDestination claimDestination);
     //Allows payout handler to parse payout destinations on its own
-    public Task<(IClaimDestination destination, string error)> ParseClaimDestination(PaymentMethodId paymentMethodId, string destination, bool validate);
+    public Task<(IClaimDestination destination, string error)> ParseClaimDestination(PaymentMethodId paymentMethodId, string destination);
+    public (bool valid, string error) ValidateClaimDestination(IClaimDestination claimDestination, PullPaymentBlob pullPaymentBlob);
+    public async Task<(IClaimDestination destination, string error)> ParseAndValidateClaimDestination(PaymentMethodId paymentMethodId, string destination, PullPaymentBlob pullPaymentBlob)
+    {
+        var res = await ParseClaimDestination(paymentMethodId, destination);
+        if (res.destination is null)
+            return res;
+        var res2 = ValidateClaimDestination(res.destination, pullPaymentBlob);
+        if (!res2.valid)
+            return (null, res2.error);
+        return res;
+    }
     public IPayoutProof ParseProof(PayoutData payout);
     //Allows you to subscribe the main pull payment hosted service to events and prepare the handler 
     void StartBackgroundCheck(Action<Type[]> subscribe);
@@ -22,6 +34,6 @@ public interface IPayoutHandler
     Task<decimal> GetMinimumPayoutAmount(PaymentMethodId paymentMethod, IClaimDestination claimDestination);
     Dictionary<PayoutState, List<(string Action, string Text)>> GetPayoutSpecificActions();
     Task<StatusMessageModel> DoSpecificAction(string action, string[] payoutIds, string storeId);
-    IEnumerable<PaymentMethodId> GetSupportedPaymentMethods();
+    Task<IEnumerable<PaymentMethodId>> GetSupportedPaymentMethods(StoreData storeData);
     Task<IActionResult> InitiatePayment(PaymentMethodId paymentMethodId, string[] payoutIds);
 }

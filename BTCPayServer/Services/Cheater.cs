@@ -15,9 +15,9 @@ namespace BTCPayServer.Services
     {
         private readonly ApplicationDbContextFactory _applicationDbContextFactory;
 
-        public Cheater(BTCPayServerOptions opts, ApplicationDbContextFactory applicationDbContextFactory)
+        public Cheater(BTCPayServerOptions opts, ExplorerClientProvider prov, ApplicationDbContextFactory applicationDbContextFactory)
         {
-            CashCow = new RPCClient(RPCCredentialString.Parse("server=http://127.0.0.1:43782;ceiwHEbqWI83:DwubwWsoo3"), Bitcoin.Instance.GetNetwork(opts.NetworkType));
+            CashCow = prov.GetExplorerClient("BTC").RPCClient;
             _applicationDbContextFactory = applicationDbContextFactory;
         }
         public RPCClient CashCow
@@ -28,14 +28,12 @@ namespace BTCPayServer.Services
 
         public async Task UpdateInvoiceExpiry(string invoiceId, DateTimeOffset dateTimeOffset)
         {
-            using (var ctx = _applicationDbContextFactory.CreateContext())
-            {
-                var invoiceData = await ctx.Invoices.FindAsync(invoiceId).ConfigureAwait(false);
-                if (invoiceData == null)
-                    return;
-                // TODO change the expiry time. But how?
-                await ctx.SaveChangesAsync().ConfigureAwait(false);
-            }
+            using var ctx = _applicationDbContextFactory.CreateContext();
+            var invoiceData = await ctx.Invoices.FindAsync(invoiceId).ConfigureAwait(false);
+            if (invoiceData == null)
+                return;
+            // TODO change the expiry time. But how?
+            await ctx.SaveChangesAsync().ConfigureAwait(false);
         }
 
         Task IHostedService.StartAsync(CancellationToken cancellationToken)

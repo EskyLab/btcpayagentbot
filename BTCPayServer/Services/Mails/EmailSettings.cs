@@ -1,6 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
-using System.Net.Mail;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading;
+using System.Threading.Tasks;
+using MailKit.Net.Smtp;
+using MimeKit;
 using Newtonsoft.Json;
 
 namespace BTCPayServer.Services.Mails
@@ -41,42 +46,54 @@ namespace BTCPayServer.Services.Mails
             get; set;
         }
 
-        [Display(Name = "Enable SSL")]
-        public bool EnableSSL
-        {
-            get; set;
-        }
-
         public bool IsComplete()
         {
+            return !string.IsNullOrWhiteSpace(Server) &&
+                   Port is int &&
+                   !string.IsNullOrWhiteSpace(Login) &&
+                   !string.IsNullOrWhiteSpace(Password);
+        }
+
+        public MimeMessage CreateMailMessage(MailboxAddress to, string subject, string message, bool isHtml)
+        {
+            var bodyBuilder = new BodyBuilder();
+            if (isHtml)
+            {
+                bodyBuilder.HtmlBody = message;
+            }
+            else
+            {
+                bodyBuilder.TextBody = message;
+            }
+
+            return new MimeMessage(
+                from: new[] { new MailboxAddress(From, !string.IsNullOrWhiteSpace(FromDisplay) ? From : FromDisplay) },
+                to: new[] { to },
+                subject,
+                bodyBuilder.ToMessageBody());
+        }
+
+        public async Task<SmtpClient> CreateSmtpClient()
+        {
+            SmtpClient client = new SmtpClient();
+            using var connectCancel = new CancellationTokenSource(10000);
             try
             {
-                using var smtp = CreateSmtpClient();
-                return true;
+                if (Extensions.IsLocalNetwork(Server))
+                {
+                    client.CheckCertificateRevocation = false;
+#pragma warning disable CA5359 // Do Not Disable Certificate Validation
+                    client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+#pragma warning restore CA5359 // Do Not Disable Certificate Validation
+                }
+                await client.ConnectAsync(Server, Port.Value, MailKit.Security.SecureSocketOptions.Auto, connectCancel.Token);
+                await client.AuthenticateAsync(Login, Password, connectCancel.Token);
             }
-            catch { }
-            return false;
-        }
-
-        public MailMessage CreateMailMessage(MailAddress to, string subject, string message)
-        {
-            return new MailMessage(
-                from: new MailAddress(From, FromDisplay),
-                to: to)
+            catch
             {
-                Subject = subject,
-                Body = message
-            };
-        }
-
-        public SmtpClient CreateSmtpClient()
-        {
-            SmtpClient client = new SmtpClient(Server, Port.Value);
-            client.EnableSsl = EnableSSL;
-            client.UseDefaultCredentials = false;
-            client.Credentials = new NetworkCredential(Login, Password);
-            client.DeliveryMethod = SmtpDeliveryMethod.Network;
-            client.Timeout = 10000;
+                client.Dispose();
+                throw;
+            }
             return client;
         }
     }

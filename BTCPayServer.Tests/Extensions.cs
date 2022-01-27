@@ -28,12 +28,15 @@ namespace BTCPayServer.Tests
 
         public static void AssertNoError(this IWebDriver driver)
         {
-            Assert.NotEmpty(driver.FindElements(By.ClassName("navbar-brand")));
-            if (!driver.PageSource.Contains("alert-danger")) return;
-            foreach (var dangerAlert in driver.FindElements(By.ClassName("alert-danger")))
-                Assert.False(dangerAlert.Displayed, $"No alert should be displayed, but found this on {driver.Url}: {dangerAlert.Text}");
+            if (driver.PageSource.Contains("alert-danger"))
+            {
+                foreach (var dangerAlert in driver.FindElements(By.ClassName("alert-danger")))
+                    Assert.False(dangerAlert.Displayed, $"No alert should be displayed, but found this on {driver.Url}: {dangerAlert.Text}");
+            }
+            Assert.DoesNotContain("errors", driver.Url);
+            Assert.DoesNotContain("Error", driver.Title, StringComparison.OrdinalIgnoreCase);
         }
-        
+
         public static T AssertViewModel<T>(this IActionResult result)
         {
             Assert.NotNull(result);
@@ -51,7 +54,7 @@ namespace BTCPayServer.Tests
         // Sometimes, selenium is flaky...
         public static IWebElement FindElementUntilNotStaled(this IWebDriver driver, By by, Action<IWebElement> act)
         {
-            retry:
+retry:
             try
             {
                 var el = driver.FindElement(by);
@@ -92,15 +95,26 @@ namespace BTCPayServer.Tests
 
         public static void UntilJsIsReady(this WebDriverWait wait)
         {
-            wait.Until(d=>((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
-            wait.Until(d=>((IJavaScriptExecutor)d).ExecuteScript("return typeof(jQuery) === 'undefined' || jQuery.active === 0").Equals(true));
+            wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
+            wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return typeof(jQuery) === 'undefined' || jQuery.active === 0").Equals(true));
         }
-        
+
         // Open collapse via JS, because if we click the link it triggers the toggle animation.
         // This leads to Selenium trying to click the button while it is moving resulting in an error.
         public static void ToggleCollapse(this IWebDriver driver, string collapseId)
         {
             driver.ExecuteJavaScript($"document.getElementById('{collapseId}').classList.add('show')");
+        }
+
+
+
+        public static void SetAttribute(this IWebDriver driver, string element, string attribute, string value)
+        {
+            driver.ExecuteJavaScript($"document.getElementById('{element}').setAttribute('{attribute}', '{value}')");
+        }
+        public static void InvokeJSFunction(this IWebDriver driver, string element, string funcName)
+        {
+            driver.ExecuteJavaScript($"document.getElementById('{element}').{funcName}()");
         }
 
         public static IWebElement WaitForElement(this IWebDriver driver, By selector)
@@ -114,15 +128,30 @@ namespace BTCPayServer.Tests
             return el;
         }
 
+        public static void ScrollTo(this IWebDriver driver, By selector)
+        {
+            var element = driver.FindElement(selector);
+            driver.ExecuteJavaScript("arguments[0].scrollIntoView();", element);
+        }
         public static void WaitForAndClick(this IWebDriver driver, By selector)
         {
             var wait = new WebDriverWait(driver, SeleniumTester.ImplicitWait);
             wait.UntilJsIsReady();
 
-            var el = driver.FindElement(selector);
-            wait.Until(d => el.Displayed && el.Enabled);
-            el.Click();
-
+            int retriesLeft = 4;
+retry:
+            try
+            {
+                var el = driver.FindElement(selector);
+                wait.Until(d => el.Displayed && el.Enabled);
+                driver.ScrollTo(selector);
+                driver.FindElement(selector).Click();
+            }
+            catch (ElementClickInterceptedException) when (retriesLeft > 0)
+            {
+                retriesLeft--;
+                goto retry;
+            }
             wait.UntilJsIsReady();
         }
 
@@ -143,7 +172,6 @@ namespace BTCPayServer.Tests
 
             if (value != element.Selected)
             {
-                Logs.Tester.LogInformation("SetCheckbox recursion, trying to click again");
                 driver.SetCheckbox(selector, value);
             }
         }

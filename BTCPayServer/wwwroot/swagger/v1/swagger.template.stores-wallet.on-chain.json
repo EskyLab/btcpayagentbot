@@ -23,7 +23,8 @@
                         "description": "The crypto code of the payment method to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     }
                 ],
                 "description": "View information about the specified wallet",
@@ -79,7 +80,8 @@
                         "description": "The crypto code of the payment method to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "blockTarget",
@@ -115,7 +117,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.store.canmodifystoresettings"
+                            "btcpay.store.canviewstoresettings"
                         ],
                         "Basic": []
                     }
@@ -145,7 +147,8 @@
                         "description": "The crypto code of the payment method to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "forceGenerate",
@@ -153,7 +156,8 @@
                         "required": false,
                         "description": "Whether to generate a new address for this request even if the previous one was not used",
                         "schema": {
-                            "type": "string"
+                            "type": "boolean",
+                            "default": false
                         }
                     }
                 ],
@@ -208,7 +212,8 @@
                         "description": "The crypto code of the payment method to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     }
                 ],
                 "description": "UnReserve address",
@@ -257,7 +262,8 @@
                         "description": "The crypto code of the wallet to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "statusFilter",
@@ -311,6 +317,9 @@
                     },
                     "404": {
                         "description": "The key is not found for this store/wallet"
+                    },
+                    "503": {
+                        "description": "You need to allow non-admins to use hotwallets for their stores (in /server/policies)"
                     }
                 },
                 "security": [
@@ -344,7 +353,8 @@
                         "description": "The crypto code of the wallet",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     }
                 ],
                 "requestBody": {
@@ -418,7 +428,8 @@
                         "description": "The crypto code of the wallet to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "transactionId",
@@ -483,7 +494,8 @@
                         "description": "The crypto code of the wallet to fetch",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     }
                 ],
                 "description": "Get store on-chain wallet utxos",
@@ -730,7 +742,7 @@
                     },
                     "subtractFromAmount": {
                         "type": "boolean",
-                        "description": "Whether to subtract from the provided amount. Must be false if `destination` is a BIP21 link"
+                        "description": "Whether to subtract the transaction fee from the provided amount. This makes the receiver receive less, or in other words: he or she pays the transaction fee. Also useful if you want to clear out your wallet. Must be false if `destination` is a BIP21 link"
                     }
                 }
             },
@@ -749,7 +761,7 @@
                     "feeRate": {
                         "type": "number",
                         "format": "decimal or long (sats/byte)",
-                        "description": "A wallet address or a BIP21 payment link"
+                        "description": "Transaction fee."
                     },
                     "proceedWithPayjoin": {
                         "type": "boolean",

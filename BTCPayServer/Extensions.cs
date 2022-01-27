@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Models;
+using BTCPayServer.BIP78.Sender;
 using BTCPayServer.Configuration;
 using BTCPayServer.Data;
 using BTCPayServer.Lightning;
@@ -29,11 +30,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
-using BTCPayServer.BIP78.Sender;
 using NBitcoin.Payment;
 using NBitpayClient;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using InvoiceCryptoInfo = BTCPayServer.Services.Invoices.InvoiceCryptoInfo;
 
@@ -44,7 +45,7 @@ namespace BTCPayServer
 
         public static bool TryGetPayjoinEndpoint(this BitcoinUrlBuilder bip21, out Uri endpoint)
         {
-            endpoint = bip21.UnknowParameters.TryGetValue($"{PayjoinClient.BIP21EndpointKey}", out var uri) ? new Uri(uri, UriKind.Absolute) : null;
+            endpoint = bip21.UnknownParameters.TryGetValue($"{PayjoinClient.BIP21EndpointKey}", out var uri) ? new Uri(uri, UriKind.Absolute) : null;
             return endpoint != null;
         }
 
@@ -91,7 +92,7 @@ namespace BTCPayServer
                 builder.Append(expiration.Days.ToString(CultureInfo.InvariantCulture));
             if (expiration.Hours >= 1)
                 builder.Append(expiration.Hours.ToString("00", CultureInfo.InvariantCulture));
-            builder.Append($"{expiration.Minutes.ToString("00", CultureInfo.InvariantCulture)}:{expiration.Seconds.ToString("00", CultureInfo.InvariantCulture)}");
+            builder.Append(CultureInfo.InvariantCulture, $"{expiration.Minutes.ToString("00", CultureInfo.InvariantCulture)}:{expiration.Seconds.ToString("00", CultureInfo.InvariantCulture)}");
             return builder.ToString();
         }
         public static decimal RoundUp(decimal value, int precision)
@@ -124,11 +125,9 @@ namespace BTCPayServer
             {
                 if (webSocket.State == WebSocketState.Open)
                 {
-                    using (CancellationTokenSource cts = new CancellationTokenSource())
-                    {
-                        cts.CancelAfter(5000);
-                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cts.Token);
-                    }
+                    using CancellationTokenSource cts = new CancellationTokenSource();
+                    cts.CancelAfter(5000);
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cts.Token);
                 }
             }
             catch { }
@@ -215,8 +214,7 @@ namespace BTCPayServer
 
         public static bool IsLocalNetwork(string server)
         {
-            if (server == null)
-                throw new ArgumentNullException(nameof(server));
+            ArgumentNullException.ThrowIfNull(server);
             if (Uri.CheckHostName(server) == UriHostNameType.Dns)
             {
                 return server.EndsWith(".internal", StringComparison.OrdinalIgnoreCase) ||
@@ -231,7 +229,7 @@ namespace BTCPayServer
             return false;
         }
 
-        
+
 
         public static StatusMessageModel GetStatusMessageModel(this ITempDataDictionary tempData)
         {
@@ -411,29 +409,89 @@ namespace BTCPayServer
             return false;
         }
 
+        public static UserPrefsCookie GetUserPrefsCookie(this HttpContext ctx)
+        {
+            var prefCookie = new UserPrefsCookie();
+            ctx.Request.Cookies.TryGetValue(nameof(UserPrefsCookie), out var strPrefCookie);
+            if (!string.IsNullOrEmpty(strPrefCookie))
+            {
+                try
+                {
+                    prefCookie = JsonConvert.DeserializeObject<UserPrefsCookie>(strPrefCookie);
+                }
+                catch { /* ignore cookie deserialization failures */ }
+            }
+
+            return prefCookie;
+        }
+
+        private static void SetCurrentStoreId(this HttpContext ctx, string storeId)
+        {
+            var prefCookie = ctx.GetUserPrefsCookie();
+            if (prefCookie.CurrentStoreId != storeId)
+            {
+                prefCookie.CurrentStoreId = storeId;
+                ctx.Response.Cookies.Append(nameof(UserPrefsCookie), JsonConvert.SerializeObject(prefCookie));
+            }
+        }
+
         public static StoreData GetStoreData(this HttpContext ctx)
         {
             return ctx.Items.TryGet("BTCPAY.STOREDATA") as StoreData;
         }
+
         public static void SetStoreData(this HttpContext ctx, StoreData storeData)
         {
             ctx.Items["BTCPAY.STOREDATA"] = storeData;
+
+            SetCurrentStoreId(ctx, storeData.Id);
         }
 
         public static StoreData[] GetStoresData(this HttpContext ctx)
         {
             return ctx.Items.TryGet("BTCPAY.STORESDATA") as StoreData[];
         }
+
         public static void SetStoresData(this HttpContext ctx, StoreData[] storeData)
         {
             ctx.Items["BTCPAY.STORESDATA"] = storeData;
         }
 
+        public static InvoiceEntity GetInvoiceData(this HttpContext ctx)
+        {
+            return ctx.Items.TryGet("BTCPAY.INVOICEDATA") as InvoiceEntity;
+        }
+
+        public static void SetInvoiceData(this HttpContext ctx, InvoiceEntity invoiceEntity)
+        {
+            ctx.Items["BTCPAY.INVOICEDATA"] = invoiceEntity;
+        }
+
+        public static PaymentRequestData GetPaymentRequestData(this HttpContext ctx)
+        {
+            return ctx.Items.TryGet("BTCPAY.PAYMENTREQUESTDATA") as PaymentRequestData;
+        }
+
+        public static void SetPaymentRequestData(this HttpContext ctx, PaymentRequestData paymentRequestData)
+        {
+            ctx.Items["BTCPAY.PAYMENTREQUESTDATA"] = paymentRequestData;
+        }
+
+        public static AppData GetAppData(this HttpContext ctx)
+        {
+            return ctx.Items.TryGet("BTCPAY.APPDATA") as AppData;
+        }
+
+        public static void SetAppData(this HttpContext ctx, AppData appData)
+        {
+            ctx.Items["BTCPAY.APPDATA"] = appData;
+        }
+
         public static IActionResult RedirectToRecoverySeedBackup(this Controller controller, RecoverySeedBackupViewModel vm)
         {
-            var redirectVm = new PostRedirectViewModel()
+            var redirectVm = new PostRedirectViewModel
             {
-                AspController = "Home",
+                AspController = "UIHome",
                 AspAction = "RecoverySeedBackup",
                 Parameters =
                 {
@@ -462,18 +520,24 @@ namespace BTCPayServer
             return sql;
         }
 
-        public static BTCPayNetworkProvider ConfigureNetworkProvider(this IConfiguration configuration)
+        public static BTCPayNetworkProvider ConfigureNetworkProvider(this IConfiguration configuration, Logs logs)
         {
             var _networkType = DefaultConfiguration.GetNetworkType(configuration);
             var supportedChains = configuration.GetOrDefault<string>("chains", "btc")
                 .Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(t => t.ToUpperInvariant()).ToHashSet();
-
+            foreach (var c in supportedChains.ToList())
+            {
+                if (new[] { "ETH", "USDT20", "FAU" }.Contains(c, StringComparer.OrdinalIgnoreCase))
+                {
+                    logs.Configuration.LogWarning($"'{c}' is not anymore supported, please remove it from 'chains'");
+                    supportedChains.Remove(c);
+                }
+            }
             var networkProvider = new BTCPayNetworkProvider(_networkType);
             var filtered = networkProvider.Filter(supportedChains.ToArray());
 #if ALTCOINS
             supportedChains.AddRange(filtered.GetAllElementsSubChains(networkProvider));
-            supportedChains.AddRange(filtered.GetAllEthereumSubChains(networkProvider));
 #endif
 #if !ALTCOINS
             var onlyBTC = supportedChains.Count == 1 && supportedChains.First() == "BTC";
@@ -487,7 +551,7 @@ namespace BTCPayServer
                     throw new ConfigException($"Invalid chains \"{chain}\"");
             }
 
-            Logs.Configuration.LogInformation(
+            logs.Configuration.LogInformation(
                 "Supported chains: " + String.Join(',', supportedChains.ToArray()));
             return result;
         }
@@ -498,7 +562,7 @@ namespace BTCPayServer
             var defaultSettings = BTCPayDefaultSettings.GetDefaultSettings(networkType);
             dataDirectories.DataDir = configuration["datadir"] ?? defaultSettings.DefaultDataDirectory;
             dataDirectories.PluginDir = configuration["plugindir"] ?? defaultSettings.DefaultPluginDirectory;
-            dataDirectories.StorageDir = Path.Combine(dataDirectories.DataDir , Storage.Services.Providers.FileSystemStorage.FileSystemFileProviderService.LocalStorageDirectoryName);
+            dataDirectories.StorageDir = Path.Combine(dataDirectories.DataDir, Storage.Services.Providers.FileSystemStorage.FileSystemFileProviderService.LocalStorageDirectoryName);
             dataDirectories.TempStorageDir = Path.Combine(dataDirectories.StorageDir, "tmp");
             return dataDirectories;
         }

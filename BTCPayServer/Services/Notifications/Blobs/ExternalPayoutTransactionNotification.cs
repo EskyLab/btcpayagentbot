@@ -28,7 +28,7 @@ namespace BTCPayServer.Services.Notifications.Blobs
             {
                 get
                 {
-                    return new (string identifier, string name)[] {(TYPE, "External payout approval")};
+                    return new (string identifier, string name)[] { (TYPE, "External payout approval") };
                 }
             }
 
@@ -37,8 +37,8 @@ namespace BTCPayServer.Services.Notifications.Blobs
             {
                 vm.Body =
                     "A payment that was made to an approved payout by an external wallet is waiting for your confirmation.";
-                vm.ActionLink = _linkGenerator.GetPathByAction(nameof(StorePullPaymentsController.Payouts),
-                    "StorePullPayments",
+                vm.ActionLink = _linkGenerator.GetPathByAction(nameof(UIStorePullPaymentsController.Payouts),
+                    "UIStorePullPayments",
                     new
                     {
                         storeId = notification.StoreId,

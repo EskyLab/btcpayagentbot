@@ -96,7 +96,7 @@ namespace BTCPayServer.PaymentRequest
                 AmountDue = amountDue,
                 AmountDueFormatted = _currencies.FormatCurrency(amountDue, blob.Currency),
                 CurrencyData = _currencies.GetCurrencyData(blob.Currency, true),
-                LastUpdated = DateTime.Now,
+                LastUpdated = DateTime.UtcNow,
                 AnyPendingInvoice = pendingInvoice != null,
                 PendingInvoiceHasPayments = pendingInvoice != null &&
                                             pendingInvoice.ExceptionStatus != InvoiceExceptionStatus.None,
@@ -140,7 +140,7 @@ namespace BTCPayServer.PaymentRequest
                     if (state.Status == InvoiceStatusLegacy.Invalid ||
                         state.Status == InvoiceStatusLegacy.Expired && !payments.Any())
                         return null;
-                    
+
                     return new ViewPaymentRequestViewModel.PaymentRequestInvoice
                     {
                         Id = entity.Id,

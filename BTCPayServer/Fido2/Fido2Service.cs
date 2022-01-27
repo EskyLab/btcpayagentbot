@@ -33,45 +33,47 @@ namespace BTCPayServer.Fido2
 
         public async Task<CredentialCreateOptions> RequestCreation(string userId)
         {
-             await using var dbContext = _contextFactory.CreateContext();
-             var user = await dbContext.Users.Include(applicationUser => applicationUser.Fido2Credentials)
-                 .FirstOrDefaultAsync(applicationUser => applicationUser.Id == userId);
-             if (user == null)
-             {
-                 return null;
-             }
+            await using var dbContext = _contextFactory.CreateContext();
+            var user = await dbContext.Users.Include(applicationUser => applicationUser.Fido2Credentials)
+                .FirstOrDefaultAsync(applicationUser => applicationUser.Id == userId);
+            if (user == null)
+            {
+                return null;
+            }
 
-                // 2. Get user existing keys by username
-                var existingKeys =
-                    user.Fido2Credentials
-                        .Where(credential => credential.Type == Fido2Credential.CredentialType.FIDO2)
-                        .Select(c => c.GetBlob().Descriptor).ToList();
+            // 2. Get user existing keys by username
+            var existingKeys =
+                user.Fido2Credentials
+                    .Where(credential => credential.Type == Fido2Credential.CredentialType.FIDO2)
+                    .Select(c => c.GetFido2Blob().Descriptor).ToList();
 
-                // 3. Create options
-                var authenticatorSelection = new AuthenticatorSelection
+            // 3. Create options
+            var authenticatorSelection = new AuthenticatorSelection
+            {
+                RequireResidentKey = false,
+                UserVerification = UserVerificationRequirement.Preferred
+            };
+
+            var exts = new AuthenticationExtensionsClientInputs()
+            {
+                Extensions = true,
+                UserVerificationIndex = true,
+                Location = true,
+                UserVerificationMethod = true,
+                BiometricAuthenticatorPerformanceBounds = new AuthenticatorBiometricPerfBounds
                 {
-                    RequireResidentKey = false, UserVerification = UserVerificationRequirement.Preferred
-                };
+                    FAR = float.MaxValue,
+                    FRR = float.MaxValue
+                },
+            };
 
-                var exts = new AuthenticationExtensionsClientInputs()
-                {
-                    Extensions = true,
-                    UserVerificationIndex = true,
-                    Location = true,
-                    UserVerificationMethod = true,
-                    BiometricAuthenticatorPerformanceBounds = new AuthenticatorBiometricPerfBounds
-                    {
-                        FAR = float.MaxValue, FRR = float.MaxValue
-                    },
-                };
+            var options = _fido2.RequestNewCredential(
+                new Fido2User() { DisplayName = user.UserName, Name = user.UserName, Id = user.Id.ToBytesUTF8() },
+                existingKeys, authenticatorSelection, AttestationConveyancePreference.None, exts);
 
-                var options = _fido2.RequestNewCredential(
-                    new Fido2User() {DisplayName = user.UserName, Name = user.UserName, Id = user.Id.ToBytesUTF8()},
-                    existingKeys, authenticatorSelection, AttestationConveyancePreference.None, exts);
-
-                // options.Rp = new PublicKeyCredentialRpEntity(Request.Host.Host, options.Rp.Name, "");
-                CreationStore.AddOrReplace(userId, options);
-                return options;
+            // options.Rp = new PublicKeyCredentialRpEntity(Request.Host.Host, options.Rp.Name, "");
+            CreationStore.AddOrReplace(userId, options);
+            return options;
         }
 
         public async Task<bool> CompleteCreation(string userId, string name, string data)
@@ -93,7 +95,7 @@ namespace BTCPayServer.Fido2
                     await _fido2.MakeNewCredentialAsync(attestationResponse, options, args => Task.FromResult(true));
 
                 // 3. Store the credentials in db
-                var newCredential = new Fido2Credential() {Name = name, ApplicationUserId = userId};
+                var newCredential = new Fido2Credential() { Name = name, ApplicationUserId = userId };
 
                 newCredential.SetBlob(new Fido2CredentialBlob()
                 {
@@ -129,7 +131,7 @@ namespace BTCPayServer.Fido2
         public async Task Remove(string id, string userId)
         {
             await using var context = _contextFactory.CreateContext();
-            var device = await context.Fido2Credentials.FindAsync( id);
+            var device = await context.Fido2Credentials.FindAsync(id);
             if (device == null || !device.ApplicationUserId.Equals(userId, StringComparison.InvariantCulture))
             {
                 return;
@@ -142,7 +144,7 @@ namespace BTCPayServer.Fido2
         public async Task<bool> HasCredentials(string userId)
         {
             await using var context = _contextFactory.CreateContext();
-            return await context.Fido2Credentials.Where(fDevice => fDevice.ApplicationUserId == userId).AnyAsync();
+            return await context.Fido2Credentials.Where(fDevice => fDevice.ApplicationUserId == userId && fDevice.Type == Fido2Credential.CredentialType.FIDO2).AnyAsync();
         }
 
         public async Task<AssertionOptions> RequestLogin(string userId)
@@ -156,19 +158,19 @@ namespace BTCPayServer.Fido2
             }
             var existingCredentials = user.Fido2Credentials
                 .Where(credential => credential.Type == Fido2Credential.CredentialType.FIDO2)
-                .Select(c => c.GetBlob().Descriptor)
+                .Select(c => c.GetFido2Blob().Descriptor)
                 .ToList();
             var exts = new AuthenticationExtensionsClientInputs()
-            { 
-                SimpleTransactionAuthorization = "FIDO", 
-                GenericTransactionAuthorization = new TxAuthGenericArg 
-                { 
-                    ContentType = "text/plain", 
-                    Content = new byte[] { 0x46, 0x49, 0x44, 0x4F } 
-                }, 
-                UserVerificationIndex = true, 
-                Location = true, 
-                UserVerificationMethod = true ,
+            {
+                SimpleTransactionAuthorization = "FIDO",
+                GenericTransactionAuthorization = new TxAuthGenericArg
+                {
+                    ContentType = "text/plain",
+                    Content = new byte[] { 0x46, 0x49, 0x44, 0x4F }
+                },
+                UserVerificationIndex = true,
+                Location = true,
+                UserVerificationMethod = true,
                 Extensions = true,
                 AppID = _fido2Configuration.Origin
             };
@@ -182,8 +184,9 @@ namespace BTCPayServer.Fido2
             LoginStore.AddOrReplace(userId, options);
             return options;
         }
-        
-        public async Task<bool> CompleteLogin(string userId, AuthenticatorAssertionRawResponse response){
+
+        public async Task<bool> CompleteLogin(string userId, AuthenticatorAssertionRawResponse response)
+        {
             await using var dbContext = _contextFactory.CreateContext();
             var user = await dbContext.Users.Include(applicationUser => applicationUser.Fido2Credentials)
                 .FirstOrDefaultAsync(applicationUser => applicationUser.Id == userId);
@@ -194,7 +197,7 @@ namespace BTCPayServer.Fido2
 
             var credential = user.Fido2Credentials
                 .Where(fido2Credential => fido2Credential.Type is Fido2Credential.CredentialType.FIDO2)
-                .Select(fido2Credential => (fido2Credential, fido2Credential.GetBlob()))
+                .Select(fido2Credential => (fido2Credential, fido2Credential.GetFido2Blob()))
                 .FirstOrDefault(fido2Credential => fido2Credential.Item2.Descriptor.Id.SequenceEqual(response.Id));
             if (credential.Item2 is null)
             {
@@ -206,7 +209,7 @@ namespace BTCPayServer.Fido2
                 credential.Item2.SignatureCounter, x => Task.FromResult(true));
 
             // 6. Store the updated counter
-            credential.Item2.SignatureCounter =  res.Counter;
+            credential.Item2.SignatureCounter = res.Counter;
             credential.fido2Credential.SetBlob(credential.Item2);
             await dbContext.SaveChangesAsync();
             LoginStore.Remove(userId, out _);

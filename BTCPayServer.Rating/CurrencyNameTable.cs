@@ -143,10 +143,11 @@ namespace BTCPayServer.Services.Rates
             return currencies;
         }
 
+        public IEnumerable<CurrencyData> Currencies => _Currencies.Values;
+
         public CurrencyData GetCurrencyData(string currency, bool useFallback)
         {
-            if (currency == null)
-                throw new ArgumentNullException(nameof(currency));
+            ArgumentNullException.ThrowIfNull(currency);
             CurrencyData result;
             if (!_Currencies.TryGetValue(currency.ToUpperInvariant(), out result))
             {

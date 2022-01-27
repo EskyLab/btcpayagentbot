@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace BTCPayServer.Models.WalletViewModels
 {
-    public class PullPaymentsModel: BasePagingViewModel
+    public class PullPaymentsModel : BasePagingViewModel
     {
         public class PullPaymentModel
         {
@@ -49,7 +49,11 @@ namespace BTCPayServer.Models.WalletViewModels
         [Display(Name = "Custom CSS Code")]
         public string EmbeddedCSS { get; set; }
 
+        [Display(Name = "Payment Methods")]
         public IEnumerable<string> PaymentMethods { get; set; }
         public IEnumerable<SelectListItem> PaymentMethodItems { get; set; }
+        [Display(Name = "Minimum acceptable expiration time for BOLT11 for refunds")]
+        [Range(1, 365 * 10)]
+        public long BOLT11Expiration { get; set; } = 30;
     }
 }

@@ -33,23 +33,36 @@ namespace BTCPayServer.Plugins
 
         public IEnumerable<IBTCPayServerPlugin> LoadedPlugins { get; }
 
-        public async Task<IEnumerable<AvailablePlugin>> GetRemotePlugins()
+        public async Task<AvailablePlugin[]> GetRemotePlugins(string path = "")
         {
             var resp = await _githubClient
-                .GetStringAsync(new Uri($"https://api.github.com/repos/{_btcPayServerOptions.PluginRemote}/contents"));
+                .GetStringAsync(new Uri($"https://api.github.com/repos/{_btcPayServerOptions.PluginRemote}/contents/{path}"));
             var files = JsonConvert.DeserializeObject<GithubFile[]>(resp);
-            return await Task.WhenAll(files.Where(file => file.Name.EndsWith($"{PluginManager.BTCPayPluginSuffix}.json", StringComparison.InvariantCulture)).Select(async file =>
-            {
-                return await _githubClient.GetStringAsync(file.DownloadUrl).ContinueWith(
-                    task => JsonConvert.DeserializeObject<AvailablePlugin>(task.Result), TaskScheduler.Current);
-            }));
-        }
+            var dirs = files.Where(file => file.Type == "dir");
+            var result = dirs.Select(file => GetRemotePlugins(file.Path));
 
-        public async Task DownloadRemotePlugin(string plugin)
+            var fileTask = Task.WhenAll(files
+                .Where(file => file.Type == "file" && file.Name.EndsWith($"{PluginManager.BTCPayPluginSuffix}.json",
+                    StringComparison.InvariantCulture)).Select(async file =>
+                {
+                    return await _githubClient.GetStringAsync(file.DownloadUrl).ContinueWith(
+                        task =>
+                        {
+                            var r = JsonConvert.DeserializeObject<AvailablePlugin>(task.Result);
+                            r.Path = path;
+                            return r;
+                        }, TaskScheduler.Current);
+                }));
+            return (await Task.WhenAll( result.Concat(new[] { fileTask })).ContinueWith(task => task.Result.SelectMany(plugins => plugins))).ToArray();
+        }
+        
+        
+
+        public async Task DownloadRemotePlugin(string plugin, string path)
         {
             var dest = _dataDirectories.Value.PluginDir;
             var resp = await _githubClient
-                .GetStringAsync(new Uri($"https://api.github.com/repos/{_btcPayServerOptions.PluginRemote}/contents"));
+                .GetStringAsync(new Uri($"https://api.github.com/repos/{_btcPayServerOptions.PluginRemote}/contents/{path}"));
             var files = JsonConvert.DeserializeObject<GithubFile[]>(resp);
             var ext = files.SingleOrDefault(file => file.Name == $"{plugin}{PluginManager.BTCPayPluginSuffix}");
             if (ext is null)
@@ -63,7 +76,10 @@ namespace BTCPayServer.Plugins
             }
             var filedest = Path.Join(dest, ext.Name);
             Directory.CreateDirectory(Path.GetDirectoryName(filedest));
-            new WebClient().DownloadFile(new Uri(ext.DownloadUrl), filedest);
+            using var resp2 = await _githubClient.GetAsync(ext.DownloadUrl);
+            using var fs = new FileStream(filedest, FileMode.Create, FileAccess.ReadWrite);
+            await resp2.Content.CopyToAsync(fs);
+            await fs.FlushAsync();
         }
 
         public void InstallPlugin(string plugin)
@@ -105,6 +121,7 @@ namespace BTCPayServer.Plugins
             public bool SystemPlugin { get; set; } = false;
 
             public IBTCPayServerPlugin.PluginDependency[] Dependencies { get; set; } = Array.Empty<IBTCPayServerPlugin.PluginDependency>();
+            public string Path { get; set; }
 
             public void Execute(IApplicationBuilder applicationBuilder,
                 IServiceProvider applicationBuilderApplicationServices)
@@ -121,6 +138,8 @@ namespace BTCPayServer.Plugins
             [JsonProperty("name")] public string Name { get; set; }
 
             [JsonProperty("sha")] public string Sha { get; set; }
+            [JsonProperty("type")] public string Type { get; set; }
+            [JsonProperty("path")] public string Path { get; set; }
 
             [JsonProperty("download_url")] public string DownloadUrl { get; set; }
         }
@@ -130,7 +149,7 @@ namespace BTCPayServer.Plugins
             return PluginManager.GetPendingCommands(_dataDirectories.Value.PluginDir);
         }
 
-        public  void CancelCommands(string plugin)
+        public void CancelCommands(string plugin)
         {
             PluginManager.CancelCommands(_dataDirectories.Value.PluginDir, plugin);
         }

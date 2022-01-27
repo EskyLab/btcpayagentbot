@@ -6,6 +6,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
+using BTCPayServer.Logging;
 using BTCPayServer.Payments;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Notifications;
@@ -33,6 +34,7 @@ namespace BTCPayServer.HostedServices
         public string EmbeddedCSS { get; set; }
         public PaymentMethodId[] PaymentMethodIds { get; set; }
         public TimeSpan? Period { get; set; }
+        public TimeSpan? BOLT11Expiration { get; set; }
     }
     public class PullPaymentHostedService : BaseAsyncService
     {
@@ -40,14 +42,12 @@ namespace BTCPayServer.HostedServices
         {
             public CancelRequest(string pullPaymentId)
             {
-                if (pullPaymentId == null)
-                    throw new ArgumentNullException(nameof(pullPaymentId));
+                ArgumentNullException.ThrowIfNull(pullPaymentId);
                 PullPaymentId = pullPaymentId;
             }
             public CancelRequest(string[] payoutIds)
             {
-                if (payoutIds == null)
-                    throw new ArgumentNullException(nameof(payoutIds));
+                ArgumentNullException.ThrowIfNull(payoutIds);
                 PayoutIds = payoutIds;
             }
             public string PullPaymentId { get; set; }
@@ -90,8 +90,7 @@ namespace BTCPayServer.HostedServices
         }
         public async Task<string> CreatePullPayment(CreatePullPayment create)
         {
-            if (create == null)
-                throw new ArgumentNullException(nameof(create));
+            ArgumentNullException.ThrowIfNull(create);
             if (create.Amount <= 0.0m)
                 throw new ArgumentException("Amount out of bound", nameof(create));
             using var ctx = this._dbContextFactory.CreateContext();
@@ -115,7 +114,8 @@ namespace BTCPayServer.HostedServices
                     CustomCSSLink = create.CustomCSSLink,
                     Email = null,
                     EmbeddedCSS = create.EmbeddedCSS,
-                }
+                },
+                BOLT11Expiration = create.BOLT11Expiration ?? TimeSpan.FromDays(30.0)
             });
             ctx.PullPayments.Add(o);
             await ctx.SaveChangesAsync();
@@ -136,10 +136,8 @@ namespace BTCPayServer.HostedServices
         {
             public PayoutRequest(TaskCompletionSource<ClaimRequest.ClaimResponse> completionSource, ClaimRequest request)
             {
-                if (request == null)
-                    throw new ArgumentNullException(nameof(request));
-                if (completionSource == null)
-                    throw new ArgumentNullException(nameof(completionSource));
+                ArgumentNullException.ThrowIfNull(request);
+                ArgumentNullException.ThrowIfNull(completionSource);
                 Completion = completionSource;
                 ClaimRequest = request;
             }
@@ -154,7 +152,8 @@ namespace BTCPayServer.HostedServices
             NotificationSender notificationSender,
             RateFetcher rateFetcher,
             IEnumerable<IPayoutHandler> payoutHandlers,
-            ILogger<PullPaymentHostedService> logger)
+            ILogger<PullPaymentHostedService> logger,
+            Logs logs) : base(logs)
         {
             _dbContextFactory = dbContextFactory;
             _jsonSerializerSettings = jsonSerializerSettings;
@@ -292,14 +291,14 @@ namespace BTCPayServer.HostedServices
                     return;
                 }
                 payout.State = PayoutState.AwaitingPayment;
-                
+
                 if (paymentMethod.CryptoCode == payout.PullPaymentData.GetBlob().Currency)
                     req.Rate = 1.0m;
                 var cryptoAmount = payoutBlob.Amount / req.Rate;
                 var payoutHandler = _payoutHandlers.FindPayoutHandler(paymentMethod);
                 if (payoutHandler is null)
                     throw new InvalidOperationException($"No payout handler for {paymentMethod}");
-                var dest = await payoutHandler.ParseClaimDestination(paymentMethod, payoutBlob.Destination, false);
+                var dest = await payoutHandler.ParseClaimDestination(paymentMethod, payoutBlob.Destination);
                 decimal minimumCryptoAmount = await payoutHandler.GetMinimumPayoutAmount(paymentMethod, dest.destination);
                 if (cryptoAmount < minimumCryptoAmount)
                 {
@@ -385,10 +384,18 @@ namespace BTCPayServer.HostedServices
                         data.State != PayoutState.Completed && data.State != PayoutState.Cancelled
                         ))
                     {
-                        
+
                         req.Completion.TrySetResult(new ClaimRequest.ClaimResponse(ClaimRequest.ClaimResult.Duplicate));
                         return;
                     }
+                }
+
+                if (req.ClaimRequest.Value <
+                    await payoutHandler.GetMinimumPayoutAmount(req.ClaimRequest.PaymentMethodId,
+                        req.ClaimRequest.Destination))
+                {
+                    req.Completion.TrySetResult(new ClaimRequest.ClaimResponse(ClaimRequest.ClaimResult.AmountTooLow));
+                    return;
                 }
 
                 var payouts = (await ctx.Payouts.GetPayoutInPeriod(pp, now)
@@ -526,10 +533,8 @@ namespace BTCPayServer.HostedServices
         {
             public InternalPayoutPaidRequest(TaskCompletionSource<PayoutPaidRequest.PayoutPaidResult> completionSource, PayoutPaidRequest request)
             {
-                if (request == null)
-                    throw new ArgumentNullException(nameof(request));
-                if (completionSource == null)
-                    throw new ArgumentNullException(nameof(completionSource));
+                ArgumentNullException.ThrowIfNull(request);
+                ArgumentNullException.ThrowIfNull(completionSource);
                 Completion = completionSource;
                 Request = request;
             }

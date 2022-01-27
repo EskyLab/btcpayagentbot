@@ -16,7 +16,7 @@
   </a>
   <a href="https://github.com/btcpayserver/btcpayserver/blob/master/LICENSE">
       <img src="https://img.shields.io/github/license/btcpayserver/btcpayserver"/>
-  </a>     
+  </a>
   <a href="https://docs.btcpayserver.org/Contribute/">
     <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"/>
   </a>
@@ -127,7 +127,7 @@ There are many other ways to get involved with the project. Check our [contribut
 
 ## 🧑‍💻 Developing
 
-To begin developing locally, visit our [local development guide](https://docs.btcpayserver.org/LocalDevelopment/). There are also several video-tutorials:
+To begin developing locally, visit our [local development guide](https://docs.btcpayserver.org/Development/LocalDevelopment/). There are also several video-tutorials:
 
 * [Setting up development environment on Windows](https://www.youtube.com/watch?v=ZePbMPSIvHM)
 * [Setting up development environment Linux (Ubuntu)](https://www.youtube.com/watch?v=j486T_Rk-yw&t)
@@ -137,7 +137,7 @@ To begin developing locally, visit our [local development guide](https://docs.bt
 
 While the documentation advises using docker-compose, you may want to build BTCPay Server yourself.
 
-First, install .NET Core SDK v3.1 as specified by the [Microsoft website](https://dotnet.microsoft.com/download/dotnet-core/3.1).
+First, install .NET Core SDK v6.0 as specified by the [Microsoft website](https://dotnet.microsoft.com/download/dotnet-core/6.0).
 
 On Powershell:
 
@@ -223,10 +223,10 @@ The BTCPay Server Project is proudly supported by these entities through the [BT
         </a>
       </td>
       <td align="center" valign="middle">
-        <a href="https://twitter.com/sqcrypto" target="_blank">
-          <img  src="BTCPayServer/wwwroot/img/squarecrypto.svg" alt="Square Crypto" height=100>
+        <a href="https://spiral.xyz" target="_blank">
+          <img  src="BTCPayServer/wwwroot/img/spiral.svg" alt="Spiral" height=100>
           <br/>
-          <span>Square Crypto</span>
+          <span>Spiral</span>
         </a>
       </td>
       <td align="center" valign="middle">

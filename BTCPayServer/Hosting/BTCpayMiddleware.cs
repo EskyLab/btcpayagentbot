@@ -19,15 +19,20 @@ namespace BTCPayServer.Hosting
     {
         readonly RequestDelegate _Next;
         readonly BTCPayServerOptions _Options;
+
+        public Logs Logs { get; }
+
         readonly BTCPayServerEnvironment _Env;
 
         public BTCPayMiddleware(RequestDelegate next,
             BTCPayServerOptions options,
-            BTCPayServerEnvironment env)
+            BTCPayServerEnvironment env,
+            Logs logs)
         {
             _Env = env ?? throw new ArgumentNullException(nameof(env));
             _Next = next ?? throw new ArgumentNullException(nameof(next));
             _Options = options ?? throw new ArgumentNullException(nameof(options));
+            Logs = logs;
         }
 
 
@@ -66,7 +71,7 @@ namespace BTCPayServer.Hosting
                 var isModal = httpContext.Request.Query.TryGetValue("view", out var view)
                             && view.ToString().Equals("modal", StringComparison.OrdinalIgnoreCase);
                 if (!string.IsNullOrEmpty(_Env.OnionUrl) &&
-                    !httpContext.Request.IsOnion() && 
+                    !httpContext.Request.IsOnion() &&
                     isHtml &&
                     !isModal)
                 {

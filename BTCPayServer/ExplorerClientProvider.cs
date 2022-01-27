@@ -18,14 +18,18 @@ namespace BTCPayServer
 
         public BTCPayNetworkProvider NetworkProviders => _NetworkProviders;
 
+        public Logs Logs { get; }
+
         readonly NBXplorerDashboard _Dashboard;
 
         public ExplorerClientProvider(
             IHttpClientFactory httpClientFactory,
             BTCPayNetworkProvider networkProviders,
             IOptions<NBXplorerOptions> nbXplorerOptions,
-            NBXplorerDashboard dashboard)
+            NBXplorerDashboard dashboard,
+            Logs logs)
         {
+            Logs = logs;
             _Dashboard = dashboard;
             _NetworkProviders = networkProviders;
 
@@ -46,7 +50,7 @@ namespace BTCPayServer
             }
         }
 
-        private static ExplorerClient CreateExplorerClient(HttpClient httpClient, BTCPayNetwork n, Uri uri,
+        private ExplorerClient CreateExplorerClient(HttpClient httpClient, BTCPayNetwork n, Uri uri,
             string cookieFile)
         {
             var explorer = n.NBXplorerNetwork.CreateExplorerClient(uri);
@@ -79,8 +83,7 @@ namespace BTCPayServer
 
         public ExplorerClient GetExplorerClient(BTCPayNetworkBase network)
         {
-            if (network == null)
-                throw new ArgumentNullException(nameof(network));
+            ArgumentNullException.ThrowIfNull(network);
             return GetExplorerClient(network.CryptoCode);
         }
 

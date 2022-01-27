@@ -10,6 +10,7 @@ using BTCPayServer.Data;
 using BTCPayServer.Events;
 using BTCPayServer.Filters;
 using BTCPayServer.HostedServices;
+using BTCPayServer.Logging;
 using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
@@ -58,10 +59,8 @@ namespace BTCPayServer.Payments.PayJoin
             public static UTXODeterministicComparer Instance => _Instance;
             public int Compare([AllowNull] UTXO x, [AllowNull] UTXO y)
             {
-                if (x == null)
-                    throw new ArgumentNullException(nameof(x));
-                if (y == null)
-                    throw new ArgumentNullException(nameof(y));
+                ArgumentNullException.ThrowIfNull(x);
+                ArgumentNullException.ThrowIfNull(y);
                 Span<byte> tmpx = stackalloc byte[32];
                 Span<byte> tmpy = stackalloc byte[32];
                 x.Outpoint.Hash.ToBytes(tmpx);
@@ -93,6 +92,8 @@ namespace BTCPayServer.Payments.PayJoin
         private readonly StoreRepository _storeRepository;
         private readonly PaymentService _paymentService;
 
+        public Logs Logs { get; }
+
         public PayJoinEndpointController(BTCPayNetworkProvider btcPayNetworkProvider,
             InvoiceRepository invoiceRepository, ExplorerClientProvider explorerClientProvider,
             BTCPayWalletProvider btcPayWalletProvider,
@@ -103,7 +104,8 @@ namespace BTCPayServer.Payments.PayJoin
             BTCPayServerEnvironment env,
             WalletReceiveService walletReceiveService,
             StoreRepository storeRepository,
-            PaymentService paymentService)
+            PaymentService paymentService,
+            Logs logs)
         {
             _btcPayNetworkProvider = btcPayNetworkProvider;
             _invoiceRepository = invoiceRepository;
@@ -117,6 +119,7 @@ namespace BTCPayServer.Payments.PayJoin
             _walletReceiveService = walletReceiveService;
             _storeRepository = storeRepository;
             _paymentService = paymentService;
+            Logs = logs;
         }
 
         [HttpPost("")]
@@ -145,7 +148,7 @@ namespace BTCPayServer.Payments.PayJoin
                 });
             }
 
-            await using var ctx = new PayjoinReceiverContext(_invoiceRepository, _explorerClientProvider.GetExplorerClient(network), _payJoinRepository);
+            await using var ctx = new PayjoinReceiverContext(_invoiceRepository, _explorerClientProvider.GetExplorerClient(network), _payJoinRepository, Logs);
             ObjectResult CreatePayjoinErrorAndLog(int httpCode, PayjoinReceiverWellknownErrors err, string debug)
             {
                 ctx.Logs.Write($"Payjoin error: {debug}", InvoiceEventData.EventSeverity.Error);
@@ -256,7 +259,7 @@ namespace BTCPayServer.Payments.PayJoin
                 {
 
                     var key = output.ScriptPubKey.Hash + "#" + network.CryptoCode.ToUpperInvariant();
-                    invoice = (await _invoiceRepository.GetInvoicesFromAddresses(new[] {key})).FirstOrDefault();
+                    invoice = (await _invoiceRepository.GetInvoicesFromAddresses(new[] { key })).FirstOrDefault();
                     if (invoice is null)
                         continue;
                     derivationSchemeSettings = invoice
@@ -269,10 +272,10 @@ namespace BTCPayServer.Payments.PayJoin
                     var store = await _storeRepository.FindStore(walletReceiveMatch.Item1.StoreId);
                     derivationSchemeSettings = store.GetDerivationSchemeSettings(_btcPayNetworkProvider,
                         walletReceiveMatch.Item1.CryptoCode);
-                    
+
                     walletId = walletReceiveMatch.Item1;
                 }
-                
+
                 if (derivationSchemeSettings is null)
                     continue;
                 var receiverInputsType = derivationSchemeSettings.AccountDerivation.ScriptPubKeyType();
@@ -424,7 +427,7 @@ namespace BTCPayServer.Payments.PayJoin
                     {
                         var outputContribution = Money.Min(additionalFee, -due);
                         outputContribution = Money.Min(outputContribution,
-                            newTx.Outputs[i].Value - newTx.Outputs[i].GetDustThreshold(minRelayTxFee));
+                            newTx.Outputs[i].Value - newTx.Outputs[i].GetDustThreshold());
                         newTx.Outputs[i].Value -= outputContribution;
                         additionalFee -= outputContribution;
                         due += outputContribution;
@@ -437,7 +440,7 @@ namespace BTCPayServer.Payments.PayJoin
                 {
                     var outputContribution = Money.Min(additionalFee, feeOutput.Value);
                     outputContribution = Money.Min(outputContribution,
-                        feeOutput.Value - feeOutput.GetDustThreshold(minRelayTxFee));
+                        feeOutput.Value - feeOutput.GetDustThreshold());
                     outputContribution = Money.Min(outputContribution, allowedSenderFeeContribution);
                     feeOutput.Value -= outputContribution;
                     additionalFee -= outputContribution;
@@ -496,10 +499,10 @@ namespace BTCPayServer.Payments.PayJoin
                     return UnprocessableEntity(CreatePayjoinError("already-paid",
                         $"The original transaction has already been accounted"));
                 }
-                _eventAggregator.Publish(new InvoiceEvent(invoice,InvoiceEvent.ReceivedPayment) { Payment = payment });
+                _eventAggregator.Publish(new InvoiceEvent(invoice, InvoiceEvent.ReceivedPayment) { Payment = payment });
             }
 
-           
+
             await _btcPayWalletProvider.GetWallet(network).SaveOffchainTransactionAsync(ctx.OriginalTransaction);
             _eventAggregator.Publish(new UpdateTransactionLabel()
             {

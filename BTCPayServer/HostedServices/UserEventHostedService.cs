@@ -20,8 +20,9 @@ namespace BTCPayServer.HostedServices
         private readonly EmailSenderFactory _emailSenderFactory;
         private readonly LinkGenerator _generator;
 
+
         public UserEventHostedService(EventAggregator eventAggregator, UserManager<ApplicationUser> userManager,
-            EmailSenderFactory emailSenderFactory, LinkGenerator generator) : base(eventAggregator)
+            EmailSenderFactory emailSenderFactory, LinkGenerator generator, Logs logs) : base(eventAggregator, logs)
         {
             _userManager = userManager;
             _emailSenderFactory = emailSenderFactory;
@@ -73,7 +74,7 @@ namespace BTCPayServer.HostedServices
                     break;
                 case UserPasswordResetRequestedEvent userPasswordResetRequestedEvent2:
                     userPasswordResetRequestedEvent = userPasswordResetRequestedEvent2;
-                    passwordSetter:
+passwordSetter:
                     code = await _userManager.GeneratePasswordResetTokenAsync(userPasswordResetRequestedEvent.User);
                     var newPassword = await _userManager.HasPasswordAsync(userPasswordResetRequestedEvent.User);
                     callbackUrl = _generator.ResetPasswordCallbackLink(userPasswordResetRequestedEvent.User.Id, code,

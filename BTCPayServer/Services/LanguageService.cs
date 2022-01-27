@@ -37,11 +37,9 @@ namespace BTCPayServer.Services
             var result = new List<Language>();
             foreach (var file in files)
             {
-                using (var stream = new StreamReader(file))
-                {
-                    var json = stream.ReadToEnd();
-                    result.Add(JObject.Parse(json).ToObject<Language>());
-                }
+                using var stream = new StreamReader(file);
+                var json = stream.ReadToEnd();
+                result.Add(JObject.Parse(json).ToObject<Language>());
             }
 
             _languages = result.ToArray();
@@ -54,13 +52,13 @@ namespace BTCPayServer.Services
 
         public IEnumerable<SelectListItem> GetLanguageSelectListItems()
         {
-              IEnumerable<SelectListItem> items = GetLanguages().Select(l => new SelectListItem
-              {
-                  Value = l.Code, 
-                  Text = l.DisplayName,
-                  Disabled = false
-              }).OrderBy(lang => lang.Text);
-              
+            IEnumerable<SelectListItem> items = GetLanguages().Select(l => new SelectListItem
+            {
+                Value = l.Code,
+                Text = l.DisplayName,
+                Disabled = false
+            }).OrderBy(lang => lang.Text);
+
             return items;
         }
 

@@ -17,7 +17,8 @@ namespace BTCPayServer.Services
         private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
         private readonly IOptions<BTCPayServerOptions> _options;
 
-        public TorServices(BTCPayNetworkProvider btcPayNetworkProvider, IOptions<BTCPayServerOptions> options)
+
+        public TorServices(BTCPayNetworkProvider btcPayNetworkProvider, IOptions<BTCPayServerOptions> options, Logs logs) : base(logs)
         {
             _btcPayNetworkProvider = btcPayNetworkProvider;
             _options = options;
@@ -86,7 +87,7 @@ namespace BTCPayServer.Services
 
         private TorService ParseService(string serviceName, string onionHost, int virtualPort)
         {
-            var torService = new TorService() {Name = serviceName, OnionHost = onionHost, VirtualPort = virtualPort};
+            var torService = new TorService() { Name = serviceName, OnionHost = onionHost, VirtualPort = virtualPort };
 
             if (Enum.TryParse<TorServiceType>(serviceName, true, out var serviceType))
                 torService.ServiceType = serviceType;
@@ -126,7 +127,7 @@ namespace BTCPayServer.Services
             {
                 LoadFromConfig();
             }
-            else if(!string.IsNullOrEmpty(_options.Value.TorrcFile))
+            else if (!string.IsNullOrEmpty(_options.Value.TorrcFile))
             {
                 await Refresh();
                 await base.StartAsync(cancellationToken);
@@ -135,7 +136,7 @@ namespace BTCPayServer.Services
 
         internal override Task[] InitializeTasks()
         {
-            return new[] {CreateLoopTask(Refresh)};
+            return new[] { CreateLoopTask(Refresh) };
         }
 
         private void LoadFromConfig()

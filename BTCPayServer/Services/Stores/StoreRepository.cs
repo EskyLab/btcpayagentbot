@@ -26,33 +26,29 @@ namespace BTCPayServer.Services.Stores
         {
             if (storeId == null)
                 return null;
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                var result = await ctx.FindAsync<StoreData>(storeId).ConfigureAwait(false);
-                return result;
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            var result = await ctx.FindAsync<StoreData>(storeId).ConfigureAwait(false);
+            return result;
         }
 
         public async Task<StoreData> FindStore(string storeId, string userId)
         {
-            if (userId == null)
-                throw new ArgumentNullException(nameof(userId));
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                return (await ctx
+            ArgumentNullException.ThrowIfNull(userId);
+            await using var ctx = _ContextFactory.CreateContext();
+            return (await ctx
                     .UserStore
                     .Where(us => us.ApplicationUserId == userId && us.StoreDataId == storeId)
+                    .Include(store => store.StoreData.UserStores)
                     .Select(us => new
                     {
                         Store = us.StoreData,
                         Role = us.Role
                     }).ToArrayAsync())
-                    .Select(us =>
-                    {
-                        us.Store.Role = us.Role;
-                        return us.Store;
-                    }).FirstOrDefault();
-            }
+                .Select(us =>
+                {
+                    us.Store.Role = us.Role;
+                    return us.Store;
+                }).FirstOrDefault();
         }
 
         public class StoreUser
@@ -63,36 +59,31 @@ namespace BTCPayServer.Services.Stores
         }
         public async Task<StoreUser[]> GetStoreUsers(string storeId)
         {
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                return await ctx
-                    .UserStore
-                    .Where(u => u.StoreDataId == storeId)
-                    .Select(u => new StoreUser()
-                    {
-                        Id = u.ApplicationUserId,
-                        Email = u.ApplicationUser.Email,
-                        Role = u.Role
-                    }).ToArrayAsync();
-            }
+            ArgumentNullException.ThrowIfNull(storeId);
+            using var ctx = _ContextFactory.CreateContext();
+            return await ctx
+                .UserStore
+                .Where(u => u.StoreDataId == storeId)
+                .Select(u => new StoreUser()
+                {
+                    Id = u.ApplicationUserId,
+                    Email = u.ApplicationUser.Email,
+                    Role = u.Role
+                }).ToArrayAsync();
         }
 
         public async Task<StoreData[]> GetStoresByUserId(string userId, IEnumerable<string> storeIds = null)
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                return (await ctx.UserStore
-                    .Where(u => u.ApplicationUserId == userId && (storeIds == null || storeIds.Contains(u.StoreDataId)))
-                    .Select(u => new { u.StoreData, u.Role })
-                    .ToArrayAsync())
-                    .Select(u =>
-                    {
-                        u.StoreData.Role = u.Role;
-                        return u.StoreData;
-                    }).ToArray();
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            return (await ctx.UserStore
+                .Where(u => u.ApplicationUserId == userId && (storeIds == null || storeIds.Contains(u.StoreDataId)))
+                .Select(u => new { u.StoreData, u.Role })
+                .ToArrayAsync())
+                .Select(u =>
+                {
+                    u.StoreData.Role = u.Role;
+                    return u.StoreData;
+                }).ToArray();
         }
 
         public async Task<StoreData> GetStoreByInvoiceId(string invoiceId)
@@ -105,34 +96,30 @@ namespace BTCPayServer.Services.Stores
 
         public async Task<bool> AddStoreUser(string storeId, string userId, string role)
         {
-            using (var ctx = _ContextFactory.CreateContext())
+            using var ctx = _ContextFactory.CreateContext();
+            var userStore = new UserStore() { StoreDataId = storeId, ApplicationUserId = userId, Role = role };
+            ctx.UserStore.Add(userStore);
+            try
             {
-                var userStore = new UserStore() { StoreDataId = storeId, ApplicationUserId = userId, Role = role };
-                ctx.UserStore.Add(userStore);
-                try
-                {
-                    await ctx.SaveChangesAsync();
-                    return true;
-                }
-                catch (Microsoft.EntityFrameworkCore.DbUpdateException)
-                {
-                    return false;
-                }
+                await ctx.SaveChangesAsync();
+                return true;
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+            {
+                return false;
             }
         }
 
         public async Task CleanUnreachableStores()
         {
-            using (var ctx = _ContextFactory.CreateContext())
+            using var ctx = _ContextFactory.CreateContext();
+            if (!ctx.Database.SupportDropForeignKey())
+                return;
+            foreach (var store in await ctx.Stores.Where(s => !s.UserStores.Where(u => u.Role == StoreRoles.Owner).Any()).ToArrayAsync())
             {
-                if (!ctx.Database.SupportDropForeignKey())
-                    return;
-                foreach (var store in await ctx.Stores.Where(s => !s.UserStores.Where(u => u.Role == StoreRoles.Owner).Any()).ToArrayAsync())
-                {
-                    ctx.Stores.Remove(store);
-                }
-                await ctx.SaveChangesAsync();
+                ctx.Stores.Remove(store);
             }
+            await ctx.SaveChangesAsync();
         }
 
         public async Task RemoveStoreUser(string storeId, string userId)
@@ -150,32 +137,19 @@ namespace BTCPayServer.Services.Stores
 
         private async Task DeleteStoreIfOrphan(string storeId)
         {
-            using (var ctx = _ContextFactory.CreateContext())
+            using var ctx = _ContextFactory.CreateContext();
+            if (ctx.Database.SupportDropForeignKey())
             {
-                if (ctx.Database.SupportDropForeignKey())
+                if (!await ctx.UserStore.Where(u => u.StoreDataId == storeId && u.Role == StoreRoles.Owner).AnyAsync())
                 {
-                    if (!await ctx.UserStore.Where(u => u.StoreDataId == storeId && u.Role == StoreRoles.Owner).AnyAsync())
+                    var store = await ctx.Stores.FindAsync(storeId);
+                    if (store != null)
                     {
-                        var store = await ctx.Stores.FindAsync(storeId);
-                        if (store != null)
-                        {
-                            ctx.Stores.Remove(store);
-                            await ctx.SaveChangesAsync();
-                        }
+                        ctx.Stores.Remove(store);
+                        await ctx.SaveChangesAsync();
                     }
                 }
             }
-        }
-
-        private void SetNewStoreHints(ref StoreData storeData) 
-        {
-            var blob = storeData.GetStoreBlob();
-            blob.Hints = new Data.StoreBlob.StoreHints
-            {
-                Wallet = true,
-                Lightning = true
-            };
-            storeData.SetStoreBlob(blob);
         }
 
         public async Task CreateStore(string ownerId, StoreData storeData)
@@ -184,30 +158,29 @@ namespace BTCPayServer.Services.Stores
                 throw new ArgumentException("id should be empty", nameof(storeData.StoreName));
             if (string.IsNullOrEmpty(storeData.StoreName))
                 throw new ArgumentException("name should not be empty", nameof(storeData.StoreName));
-            if (ownerId == null)
-                throw new ArgumentNullException(nameof(ownerId));
-            using (var ctx = _ContextFactory.CreateContext())
+            ArgumentNullException.ThrowIfNull(ownerId);
+            using var ctx = _ContextFactory.CreateContext();
+            storeData.Id = Encoders.Base58.EncodeData(RandomUtils.GetBytes(32));
+            var userStore = new UserStore
             {
-                storeData.Id = Encoders.Base58.EncodeData(RandomUtils.GetBytes(32));
-                var userStore = new UserStore
-                {
-                    StoreDataId = storeData.Id,
-                    ApplicationUserId = ownerId,
-                    Role = StoreRoles.Owner,
-                };
-                
-                SetNewStoreHints(ref storeData);
+                StoreDataId = storeData.Id,
+                ApplicationUserId = ownerId,
+                Role = StoreRoles.Owner,
+            };
 
-                ctx.Add(storeData);
-                ctx.Add(userStore);
-                await ctx.SaveChangesAsync();
-            }
-        }        
+            ctx.Add(storeData);
+            ctx.Add(userStore);
+            await ctx.SaveChangesAsync();
+        }
 
-        public async Task<StoreData> CreateStore(string ownerId, string name)
+        public async Task<StoreData> CreateStore(string ownerId, string name, string defaultCurrency, string preferredExchange)
         {
-            var store = new StoreData() { StoreName = name };
-            SetNewStoreHints(ref store);
+            var store = new StoreData { StoreName = name };
+            var blob = store.GetStoreBlob();
+            blob.DefaultCurrency = defaultCurrency;
+            blob.PreferredExchange = preferredExchange;
+            store.SetStoreBlob(blob);
+            
             await CreateStore(ownerId, store);
             return store;
         }
@@ -222,10 +195,8 @@ namespace BTCPayServer.Services.Stores
 
         public async Task<WebhookDeliveryData> GetWebhookDelivery(string storeId, string webhookId, string deliveryId)
         {
-            if (webhookId == null)
-                throw new ArgumentNullException(nameof(webhookId));
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
+            ArgumentNullException.ThrowIfNull(webhookId);
+            ArgumentNullException.ThrowIfNull(storeId);
             using var ctx = _ContextFactory.CreateContext();
             return await ctx.StoreWebhooks
                 .Where(d => d.StoreId == storeId && d.WebhookId == webhookId)
@@ -252,10 +223,8 @@ namespace BTCPayServer.Services.Stores
 
         public async Task<WebhookDeliveryData[]> GetWebhookDeliveries(string storeId, string webhookId, int? count)
         {
-            if (webhookId == null)
-                throw new ArgumentNullException(nameof(webhookId));
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
+            ArgumentNullException.ThrowIfNull(webhookId);
+            ArgumentNullException.ThrowIfNull(storeId);
             using var ctx = _ContextFactory.CreateContext();
             IQueryable<WebhookDeliveryData> req = ctx.StoreWebhooks
                 .Where(s => s.StoreId == storeId && s.WebhookId == webhookId)
@@ -269,10 +238,8 @@ namespace BTCPayServer.Services.Stores
 
         public async Task<string> CreateWebhook(string storeId, WebhookBlob blob)
         {
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
-            if (blob == null)
-                throw new ArgumentNullException(nameof(blob));
+            ArgumentNullException.ThrowIfNull(storeId);
+            ArgumentNullException.ThrowIfNull(blob);
             using var ctx = _ContextFactory.CreateContext();
             WebhookData data = new WebhookData();
             data.Id = Encoders.Base58.EncodeData(RandomUtils.GetBytes(16));
@@ -290,10 +257,8 @@ namespace BTCPayServer.Services.Stores
 
         public async Task<WebhookData> GetWebhook(string storeId, string webhookId)
         {
-            if (webhookId == null)
-                throw new ArgumentNullException(nameof(webhookId));
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
+            ArgumentNullException.ThrowIfNull(webhookId);
+            ArgumentNullException.ThrowIfNull(storeId);
             using var ctx = _ContextFactory.CreateContext();
             return await ctx.StoreWebhooks
                 .Where(s => s.StoreId == storeId && s.WebhookId == webhookId)
@@ -302,8 +267,7 @@ namespace BTCPayServer.Services.Stores
         }
         public async Task<WebhookData> GetWebhook(string webhookId)
         {
-            if (webhookId == null)
-                throw new ArgumentNullException(nameof(webhookId));
+            ArgumentNullException.ThrowIfNull(webhookId);
             using var ctx = _ContextFactory.CreateContext();
             return await ctx.StoreWebhooks
                 .Where(s => s.WebhookId == webhookId)
@@ -312,10 +276,8 @@ namespace BTCPayServer.Services.Stores
         }
         public async Task DeleteWebhook(string storeId, string webhookId)
         {
-            if (webhookId == null)
-                throw new ArgumentNullException(nameof(webhookId));
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
+            ArgumentNullException.ThrowIfNull(webhookId);
+            ArgumentNullException.ThrowIfNull(storeId);
             using var ctx = _ContextFactory.CreateContext();
             var hook = await ctx.StoreWebhooks
                 .Where(s => s.StoreId == storeId && s.WebhookId == webhookId)
@@ -329,12 +291,9 @@ namespace BTCPayServer.Services.Stores
 
         public async Task UpdateWebhook(string storeId, string webhookId, WebhookBlob webhookBlob)
         {
-            if (webhookId == null)
-                throw new ArgumentNullException(nameof(webhookId));
-            if (storeId == null)
-                throw new ArgumentNullException(nameof(storeId));
-            if (webhookBlob == null)
-                throw new ArgumentNullException(nameof(webhookBlob));
+            ArgumentNullException.ThrowIfNull(webhookId);
+            ArgumentNullException.ThrowIfNull(storeId);
+            ArgumentNullException.ThrowIfNull(webhookBlob);
             using var ctx = _ContextFactory.CreateContext();
             var hook = await ctx.StoreWebhooks
                 .Where(s => s.StoreId == storeId && s.WebhookId == webhookId)
@@ -361,41 +320,51 @@ namespace BTCPayServer.Services.Stores
 
         public async Task UpdateStore(StoreData store)
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                var existing = await ctx.FindAsync<StoreData>(store.Id);
-                ctx.Entry(existing).CurrentValues.SetValues(store);
-                await ctx.SaveChangesAsync().ConfigureAwait(false);
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            var existing = await ctx.FindAsync<StoreData>(store.Id);
+            ctx.Entry(existing).CurrentValues.SetValues(store);
+            await ctx.SaveChangesAsync().ConfigureAwait(false);
         }
 
         public async Task<bool> DeleteStore(string storeId)
         {
-            using (var ctx = _ContextFactory.CreateContext())
+            int retry = 0;
+            using var ctx = _ContextFactory.CreateContext();
+            if (!ctx.Database.SupportDropForeignKey())
+                return false;
+            var store = await ctx.Stores.FindAsync(storeId);
+            if (store == null)
+                return false;
+            var webhooks = await ctx.StoreWebhooks
+                .Where(o => o.StoreId == storeId)
+                .Select(o => o.Webhook)
+                .ToArrayAsync();
+            foreach (var w in webhooks)
+                ctx.Webhooks.Remove(w);
+            ctx.Stores.Remove(store);
+            retry:
+            try
             {
-                if (!ctx.Database.SupportDropForeignKey())
-                    return false;
-                var store = await ctx.Stores.FindAsync(storeId);
-                if (store == null)
-                    return false;
-                var webhooks = await ctx.StoreWebhooks
-                    .Where(o => o.StoreId == storeId)
-                    .Select(o => o.Webhook)
-                    .ToArrayAsync();
-                foreach (var w in webhooks)
-                    ctx.Webhooks.Remove(w);
-                ctx.Stores.Remove(store);
                 await ctx.SaveChangesAsync();
-                return true;
             }
+            catch (DbUpdateException ex) when (IsDeadlock(ex) && retry < 5)
+            {
+                await Task.Delay(100);
+                retry++;
+                goto retry;
+            }
+            return true;
+        }
+
+        private static bool IsDeadlock(DbUpdateException ex)
+        {
+            return ex.InnerException is Npgsql.PostgresException postgres && postgres.SqlState == "40P01";
         }
 
         public bool CanDeleteStores()
         {
-            using (var ctx = _ContextFactory.CreateContext())
-            {
-                return ctx.Database.SupportDropForeignKey();
-            }
+            using var ctx = _ContextFactory.CreateContext();
+            return ctx.Database.SupportDropForeignKey();
         }
     }
 }

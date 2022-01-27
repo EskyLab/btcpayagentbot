@@ -1,19 +1,25 @@
+using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using System.Threading.Tasks;
 using BTCPayServer.Client;
+using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Newtonsoft.Json;
+using StoreData = BTCPayServer.Data.StoreData;
 
-namespace BTCPayServer.Security.GreenField
+namespace BTCPayServer.Security.Greenfield
 {
-    public class LocalGreenFieldAuthorizationHandler : AuthorizationHandler<PolicyRequirement>
+    public class LocalGreenfieldAuthorizationHandler : AuthorizationHandler<PolicyRequirement>
     {
         protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PolicyRequirement requirement)
         {
-            var succeed = context.User.Identity.AuthenticationType == $"Local{GreenFieldConstants.AuthenticationType}";
+            var succeed = context.User.Identity.AuthenticationType == $"Local{GreenfieldConstants.AuthenticationType}";
 
             if (succeed)
             {
@@ -22,15 +28,15 @@ namespace BTCPayServer.Security.GreenField
             return Task.CompletedTask;
         }
     }
-    
-    public class GreenFieldAuthorizationHandler : AuthorizationHandler<PolicyRequirement>
+
+    public class GreenfieldAuthorizationHandler : AuthorizationHandler<PolicyRequirement>
 
     {
         private readonly HttpContext _HttpContext;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly StoreRepository _storeRepository;
 
-        public GreenFieldAuthorizationHandler(IHttpContextAccessor httpContextAccessor,
+        public GreenfieldAuthorizationHandler(IHttpContextAccessor httpContextAccessor,
             UserManager<ApplicationUser> userManager,
             StoreRepository storeRepository)
         {
@@ -42,7 +48,7 @@ namespace BTCPayServer.Security.GreenField
         protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context,
             PolicyRequirement requirement)
         {
-            if (context.User.Identity.AuthenticationType != GreenFieldConstants.AuthenticationType)
+            if (context.User.Identity.AuthenticationType != GreenfieldConstants.AuthenticationType)
                 return;
             var userid = _userManager.GetUserId(context.User);
             bool success = false;
@@ -88,6 +94,8 @@ namespace BTCPayServer.Security.GreenField
                             if (context.HasPermission(Permission.Create(policy, store.Id), requiredUnscoped))
                                 permissionedStores.Add(store);
                         }
+                        if (!requiredUnscoped && permissionedStores.Count is 0)
+                            break;
                         _HttpContext.SetStoresData(permissionedStores.ToArray());
                         success = true;
                     }
@@ -117,6 +125,8 @@ namespace BTCPayServer.Security.GreenField
             {
                 context.Succeed(requirement);
             }
+            _HttpContext.Items[RequestedPermissionKey] = policy;
         }
+        public const string RequestedPermissionKey = nameof(RequestedPermissionKey);
     }
 }

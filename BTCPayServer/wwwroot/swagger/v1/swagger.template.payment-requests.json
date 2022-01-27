@@ -289,13 +289,17 @@
                         "description":  "The id of the payment request",
                         "nullable": false
                     },
+                    "storeId": {
+                        "type": "string",
+                        "description": "The store identifier that the payment request belongs to"
+                    },
                     "status": {
                         "type": "string",
                         "enum": [ "Pending", "Completed" ,"Expired"],
                         "description": "The status of the payment request",
                         "nullable": false
                     },
-                    "created": {
+                    "createdTime": {
                         "description": "The creation date of the payment request",
                         "allOf": [ {"$ref": "#/components/schemas/UnixTimestamp"}],
                         "nullable": false
@@ -322,8 +326,8 @@
                     "currency": {
                         "type": "string",
                         "format": "ISO 4217 Currency code(BTC, EUR, USD, etc)",
-                        "description": "The currency of the payment request",
-                        "nullable": false
+                        "description": "The currency of the payment request. If empty, the store's default currency code will be used.",
+                        "nullable": true
                     },
                     "email": {
                         "type": "string",

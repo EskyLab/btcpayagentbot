@@ -58,6 +58,26 @@
                         "required": false,
                         "description": "End date of the period to retrieve invoices",
                         "$ref": "#/components/schemas/UnixTimestamp"
+                    },
+                    {
+                        "name": "skip",
+                        "in": "query",
+                        "required": false,
+                        "description": "Number of records to skip",
+                        "schema": {
+                            "nullable": true,
+                            "type": "number"
+                        }
+                    },
+                    {
+                        "name": "take",
+                        "in": "query",
+                        "required": false,
+                        "description": "Number of records returned in response",
+                        "schema": {
+                            "nullable": true,
+                            "type": "number"
+                        }
                     }
                 ],
                 "description": "View information about the existing invoices",
@@ -836,6 +856,10 @@
                                 "items": {
                                     "$ref": "#/components/schemas/InvoiceStatus"
                                 }
+                            },
+                            "archived": {
+                                "type": "boolean",
+                                "description": "true if the invoice is archived"
                             }
                         }
                     }
@@ -1128,7 +1152,12 @@
                 "properties": {
                     "paymentMethod": {
                         "type": "string",
-                        "description": "The payment method"
+                        "description": "Payment method available for the invoice (e.g., \"BTC\" or \"BTC-LightningNetwork\" or \"BTC-LNURLPAY\")"
+                    },
+                    "cryptoCode": {
+                        "type": "string",
+                        "description": "Crypto code of the payment method (e.g., \"BTC\" or \"LTC\")",
+                        "example": "BTC"
                     },
                     "destination": {
                         "type": "string",

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BTCPayServer.Client.Models;
-using BTCPayServer.Controllers.GreenField;
+using BTCPayServer.Controllers.Greenfield;
 using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Services.Invoices;
 using NBitcoin;
@@ -12,7 +12,7 @@ namespace BTCPayServer.Payments
 {
     public class LNURLPayPaymentType : LightningPaymentType
     {
-        public new static LNURLPayPaymentType Instance { get; } = new LNURLPayPaymentType();        
+        public new static LNURLPayPaymentType Instance { get; } = new LNURLPayPaymentType();
         public override string ToPrettyString() => "LNURL-Pay";
         public override string GetId() => "LNURLPAY";
         public override string ToStringNormalized() => "LNURLPAY";

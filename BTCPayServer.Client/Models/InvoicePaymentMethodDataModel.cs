@@ -33,6 +33,8 @@ namespace BTCPayServer.Client.Models
         public List<Payment> Payments { get; set; }
         public string PaymentMethod { get; set; }
 
+        public string CryptoCode { get; set; }
+
         public class Payment
         {
             public string Id { get; set; }
@@ -50,7 +52,7 @@ namespace BTCPayServer.Client.Models
             public PaymentStatus Status { get; set; }
 
             public string Destination { get; set; }
-            
+
             public enum PaymentStatus
             {
                 Invalid,

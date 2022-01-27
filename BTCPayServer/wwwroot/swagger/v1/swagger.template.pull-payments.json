@@ -81,6 +81,13 @@
                                         "nullable": true,
                                         "description": "The length of each period in seconds."
                                     },
+                                    "BOLT11Expiration": {
+                                        "type": "string",
+                                        "example": 30,
+                                        "default": 30,
+                                        "nullable": true,
+                                        "description": "If lightning is activated, do not accept BOLT11 invoices with expiration less than … days"
+                                    },
                                     "startsAt": {
                                         "type": "integer",
                                         "format": "unix timestamp in seconds",
@@ -310,6 +317,46 @@
                     }
                 },
                 "tags": [ "Pull payments (Public)" ],
+                "security": []
+            }
+        },
+        "/api/v1/pull-payments/{pullPaymentId}/payouts/{payoutId}": {
+            "parameters": [
+                {
+                    "name": "pullPaymentId",
+                    "in": "path",
+                    "required": true,
+                    "description": "The ID of the pull payment",
+                    "schema": { "type": "string" }
+                },
+                {
+                    "name": "payoutId",
+                    "in": "path",
+                    "required": true,
+                    "description": "The ID of the pull payment payout",
+                    "schema": { "type": "string" }
+                }
+            ],
+            "get": {
+                "summary": "Get Payout",
+                "operationId": "PullPayments_GetPayout",
+                "description": "Get payout",
+                "responses": {
+                    "200": {
+                        "description": "A specific payout of a pull payment",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PayoutData"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Pull payment payout not found"
+                    }
+                },
+                "tags": [ "Pull payments (Public)", "Pull payments payout (Public)" ],
                 "security": []
             }
         },
@@ -554,7 +601,12 @@
                     "paymentMethod": {
                         "type": "string",
                         "example": "BTC",
-                        "description": "The payment method of the payout"
+                        "description": "The payment method of the payout (e.g., \"BTC\" or \"BTC_LightningLike\""
+                    },
+                    "cryptoCode": {
+                        "type": "string",
+                        "example": "BTC",
+                        "description": "Crypto code of the payment method of the payout (e.g., \"BTC\" or \"LTC\")"
                     },
                     "paymentMethodAmount": {
                         "type": "string",
@@ -611,6 +663,11 @@
                         "example": 604800,
                         "nullable": true,
                         "description": "The length of each period in seconds"
+                    },
+                    "BOLT11Expiration": {
+                        "type": "string",
+                        "example": 30,
+                        "description": "If lightning is activated, do not accept BOLT11 invoices with expiration less than … days"
                     },
                     "archived": {
                         "type": "boolean",

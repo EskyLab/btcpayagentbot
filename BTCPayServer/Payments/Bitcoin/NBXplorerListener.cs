@@ -39,8 +39,10 @@ namespace BTCPayServer.Payments.Bitcoin
                                 InvoiceRepository invoiceRepository,
                                 EventAggregator aggregator,
                                 PayJoinRepository payjoinRepository,
-                                PaymentService paymentService)
+                                PaymentService paymentService,
+                                Logs logs)
         {
+            this.Logs = logs;
             PollInterval = TimeSpan.FromMinutes(1.0);
             _Wallets = wallets;
             _InvoiceRepository = invoiceRepository;
@@ -55,6 +57,9 @@ namespace BTCPayServer.Payments.Bitcoin
         private Timer _ListenPoller;
 
         TimeSpan _PollInterval;
+
+        public Logs Logs { get; }
+
         public TimeSpan PollInterval
         {
             get
@@ -75,25 +80,25 @@ namespace BTCPayServer.Payments.Bitcoin
         {
             _RunningTask = new TaskCompletionSource<bool>();
             _Cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            leases.Add(_Aggregator.SubscribeAsync<Events.NBXplorerStateChangedEvent>(async nbxplorerEvent =>
+            leases.Add(_Aggregator.Subscribe<Events.NBXplorerStateChangedEvent>(nbxplorerEvent =>
             {
                 if (nbxplorerEvent.NewState == NBXplorerState.Ready)
                 {
                     var wallet = _Wallets.GetWallet(nbxplorerEvent.Network);
                     if (_Wallets.IsAvailable(wallet.Network))
                     {
-                        await Listen(wallet);
+                        _ = Listen(wallet);
                     }
                 }
             }));
 
-            _ListenPoller = new Timer(async s =>
+            _ListenPoller = new Timer(s =>
             {
                 foreach (var wallet in _Wallets.GetWallets())
                 {
                     if (_Wallets.IsAvailable(wallet.Network))
                     {
-                        await Listen(wallet);
+                        _ =  Listen(wallet);
                     }
                 }
             }, null, 0, (int)PollInterval.TotalMilliseconds);
@@ -152,7 +157,7 @@ namespace BTCPayServer.Payments.Bitcoin
                                     {
                                         var key = output.Item1.ScriptPubKey.Hash + "#" +
                                                   network.CryptoCode.ToUpperInvariant();
-                                        var invoice = (await _InvoiceRepository.GetInvoicesFromAddresses(new[] {key}))
+                                        var invoice = (await _InvoiceRepository.GetInvoicesFromAddresses(new[] { key }))
                                             .FirstOrDefault();
                                         if (invoice != null)
                                         {
@@ -413,7 +418,7 @@ namespace BTCPayServer.Payments.Bitcoin
             var paymentMethod = invoice.GetPaymentMethod(wallet.Network, PaymentTypes.BTCLike);
             if (paymentMethod != null &&
                 paymentMethod.GetPaymentMethodDetails() is BitcoinLikeOnChainPaymentMethod btc &&
-                btc.Activated && 
+                btc.Activated &&
                 btc.GetDepositAddress(wallet.Network.NBitcoinNetwork).ScriptPubKey == paymentData.ScriptPubKey &&
                 paymentMethod.Calculate().Due > Money.Zero)
             {

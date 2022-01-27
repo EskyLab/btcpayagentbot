@@ -14,7 +14,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -49,7 +50,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -70,7 +71,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -128,7 +130,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -149,7 +151,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -184,7 +187,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -203,7 +206,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -261,7 +265,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -283,7 +287,8 @@
                         "schema": {
                             "type": "string",
                             "description": "A bitcoin address belonging to the lightning node"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -318,7 +323,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -340,7 +345,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -384,7 +390,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -405,7 +411,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
@@ -463,7 +470,7 @@
                 "security": [
                     {
                         "API Key": [
-                            "btcpay.server.canuseinternallightningnode"
+                            "btcpay.store.cancreatelightninginvoice"
                         ],
                         "Basic": []
                     }
@@ -484,7 +491,8 @@
                         "description": "The cryptoCode of the lightning-node to query",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "BTC"
                     },
                     {
                         "name": "storeId",
