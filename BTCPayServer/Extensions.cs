@@ -425,6 +425,11 @@ namespace BTCPayServer
             return prefCookie;
         }
 
+        public static void DeleteUserPrefsCookie(this HttpContext ctx)
+        {
+            ctx.Response.Cookies.Delete(nameof(UserPrefsCookie));
+        }
+
         private static void SetCurrentStoreId(this HttpContext ctx, string storeId)
         {
             var prefCookie = ctx.GetUserPrefsCookie();
@@ -487,20 +492,28 @@ namespace BTCPayServer
             ctx.Items["BTCPAY.APPDATA"] = appData;
         }
 
+        public static bool SupportChain(this IConfiguration conf, string cryptoCode)
+        {
+            var supportedChains = conf.GetOrDefault<string>("chains", "btc")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.ToUpperInvariant()).ToHashSet();
+            return supportedChains.Contains(cryptoCode.ToUpperInvariant());
+        }
+
         public static IActionResult RedirectToRecoverySeedBackup(this Controller controller, RecoverySeedBackupViewModel vm)
         {
             var redirectVm = new PostRedirectViewModel
             {
                 AspController = "UIHome",
                 AspAction = "RecoverySeedBackup",
-                Parameters =
+                FormParameters =
                 {
-                    new KeyValuePair<string, string>("cryptoCode", vm.CryptoCode),
-                    new KeyValuePair<string, string>("mnemonic", vm.Mnemonic),
-                    new KeyValuePair<string, string>("passphrase", vm.Passphrase),
-                    new KeyValuePair<string, string>("isStored", vm.IsStored ? "true" : "false"),
-                    new KeyValuePair<string, string>("requireConfirm", vm.RequireConfirm ? "true" : "false"),
-                    new KeyValuePair<string, string>("returnUrl", vm.ReturnUrl)
+                    { "cryptoCode", vm.CryptoCode },
+                    { "mnemonic", vm.Mnemonic },
+                    { "passphrase", vm.Passphrase },
+                    { "isStored", vm.IsStored ? "true" : "false" },
+                    { "requireConfirm", vm.RequireConfirm ? "true" : "false" },
+                    { "returnUrl", vm.ReturnUrl }
                 }
             };
             return controller.View("PostRedirect", redirectVm);

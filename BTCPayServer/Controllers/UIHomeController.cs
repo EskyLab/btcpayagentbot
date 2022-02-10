@@ -63,6 +63,12 @@ namespace BTCPayServer.Controllers
             SignInManager = signInManager;
         }
 
+        [HttpGet("home")]
+        public Task<IActionResult> Home()
+        {
+            return Index();
+        }
+
         [Route("")]
         [DomainMappingConstraint]
         public async Task<IActionResult> Index()
@@ -82,9 +88,7 @@ namespace BTCPayServer.Controllers
                     var store = await _storeRepository.FindStore(storeId, userId);
                     if (store != null)
                     {
-                        return store.Role == StoreRoles.Owner 
-                            ? RedirectToAction("Dashboard", "UIStores", new { storeId }) 
-                            : RedirectToAction("ListInvoices", "UIInvoice", new { storeId });
+                        return RedirectToStore(store);
                     }
                 }
                 
@@ -92,8 +96,7 @@ namespace BTCPayServer.Controllers
                 if (stores.Any())
                 {
                     // redirect to first store
-                    storeId = stores.First().Id;
-                    return RedirectToAction("Dashboard", "UIStores", new { storeId });
+                    return RedirectToStore(stores.First());
                 }
                 
                 var vm = new HomeViewModel
@@ -168,6 +171,13 @@ namespace BTCPayServer.Controllers
         public IActionResult Error()
         {
             return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+        }
+
+        public RedirectToActionResult RedirectToStore(StoreData store)
+        {
+            return store.Role == StoreRoles.Owner 
+                ? RedirectToAction("Dashboard", "UIStores", new { storeId = store.Id }) 
+                : RedirectToAction("ListInvoices", "UIInvoice", new { storeId = store.Id });
         }
     }
 }
