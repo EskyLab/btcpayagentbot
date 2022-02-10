@@ -32,6 +32,7 @@ jobs:
       - run:
           command: |
             curl -X POST -H "Authorization: token $GH_PAT"  -H "Accept: application/vnd.github.everest-preview+json"  -H "Content-Type: application/json" https://api.github.com/repos/btcpayserver/btcpayserver-doc/dispatches --data '{"event_type": "build_docs"}'
+
   # publish jobs require $DOCKERHUB_REPO, $DOCKERHUB_USER, $DOCKERHUB_PASS defined
   amd64:
     machine:
@@ -47,6 +48,7 @@ jobs:
             sudo docker login --username=$DOCKERHUB_USER --password=$DOCKERHUB_PASS
             sudo docker push $DOCKERHUB_REPO:$LATEST_TAG-amd64
             sudo docker push $DOCKERHUB_REPO:$LATEST_TAG-altcoins-amd64
+
   arm32v7:
     machine:
         enabled: true
@@ -62,6 +64,7 @@ jobs:
             sudo docker login --username=$DOCKERHUB_USER --password=$DOCKERHUB_PASS
             sudo docker push $DOCKERHUB_REPO:$LATEST_TAG-arm32v7
             sudo docker push $DOCKERHUB_REPO:$LATEST_TAG-altcoins-arm32v7
+
   arm64v8:
     machine:
         enabled: true
@@ -77,6 +80,7 @@ jobs:
             sudo docker login --username=$DOCKERHUB_USER --password=$DOCKERHUB_PASS
             sudo docker push $DOCKERHUB_REPO:$LATEST_TAG-arm64v8
             sudo docker push $DOCKERHUB_REPO:$LATEST_TAG-altcoins-arm64v8
+
   multiarch:
     machine:
       enabled: true
@@ -103,6 +107,7 @@ jobs:
             sudo docker manifest annotate $DOCKERHUB_REPO:$LATEST_TAG-altcoins $DOCKERHUB_REPO:$LATEST_TAG-altcoins-arm32v7 --os linux --arch arm --variant v7
             sudo docker manifest annotate $DOCKERHUB_REPO:$LATEST_TAG-altcoins $DOCKERHUB_REPO:$LATEST_TAG-altcoins-arm64v8 --os linux --arch arm64 --variant v8
             sudo docker manifest push $DOCKERHUB_REPO:$LATEST_TAG-altcoins -p
+
 workflows:
   version: 2
   build_and_test:
@@ -151,3 +156,4 @@ workflows:
               ignore: /.*/
             tags:
               only: /(v[1-9]+(\.[0-9]+)*(-[a-z0-9-]+)?)|(v[a-z0-9-]+)/
+              
