@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Payments;
@@ -365,7 +366,8 @@ namespace BTCPayServer.Controllers.Greenfield
                         PaymentLink =
                             method.GetId().PaymentType.GetPaymentLink(method.Network, details, accounting.Due,
                                 Request.GetAbsoluteRoot()),
-                        Payments = payments.Select(paymentEntity => ToPaymentModel(entity, paymentEntity)).ToList()
+                        Payments = payments.Select(paymentEntity => ToPaymentModel(entity, paymentEntity)).ToList(),
+                        AdditionalData = details.GetAdditionalData()
                     };
                 }).ToArray();
         }

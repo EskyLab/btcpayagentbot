@@ -216,13 +216,6 @@ The BTCPay Server Project is proudly supported by these entities through the [BT
   <tbody>
     <tr>
       <td align="center" valign="middle">
-        <a href="https://kraken.com" target="_blank">
-          <img  src="BTCPayServer/wwwroot/img/kraken.svg" alt="Kraken" height=100>
-          <br/>
-          <span>Kraken</span>
-        </a>
-      </td>
-      <td align="center" valign="middle">
         <a href="https://spiral.xyz" target="_blank">
           <img  src="BTCPayServer/wwwroot/img/spiral.svg" alt="Spiral" height=100>
           <br/>
@@ -243,15 +236,6 @@ The BTCPay Server Project is proudly supported by these entities through the [BT
           <span>PNXBET</span>
         </a>
       </td>
-       <td align="center" valign="middle">
-        <a href="https://acinq.co/" target="_blank">
-          <img  src="BTCPayServer/wwwroot/img/acinq-logo.svg" alt="ACINQ" height=100>
-          <br/>
-          <span>ACINQ</span>
-        </a>
-      </td>
-      </tr>
-      <tr>
       <td align="center" valign="middle">
         <a href="https://lunanode.com" target="_blank">
           <img  src="BTCPayServer/wwwroot/img/lunanode.svg" alt="LunaNode" height=100>
@@ -259,6 +243,8 @@ The BTCPay Server Project is proudly supported by these entities through the [BT
           <span>LunaNode</span>
         </a>
       </td>
+      </tr>
+      <tr>
       <td align="center" valign="middle">
         <a href="https://walletofsatoshi.com/" target="_blank">
           <img  src="BTCPayServer/wwwroot/img/walletofsatoshi.svg" alt="Wallet of Satoshi" height=100>
@@ -280,6 +266,13 @@ The BTCPay Server Project is proudly supported by these entities through the [BT
          <span>Coincards</span>
        </a>
      </td>
+     <td align="center" valign="middle">
+        <a href="https://ivpn.net/" target="_blank">
+          <img  src="BTCPayServer/wwwroot/img/ivpn.svg?sanitize=true" alt="IVPN" height=100>
+          <br/>
+          <span>IVPN</span>
+        </a>
+      </td>
     </tr>
   </tbody>
 </table>

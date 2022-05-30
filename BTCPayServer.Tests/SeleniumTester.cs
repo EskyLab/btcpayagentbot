@@ -1,12 +1,10 @@
 using System;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Abstractions.Models;
-using BTCPayServer.BIP78.Sender;
 using BTCPayServer.Lightning;
 using BTCPayServer.Lightning.CLightning;
 using BTCPayServer.Views.Manage;
@@ -15,6 +13,7 @@ using BTCPayServer.Views.Stores;
 using BTCPayServer.Views.Wallets;
 using Microsoft.Extensions.Configuration;
 using NBitcoin;
+using NBitcoin.RPC;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
@@ -47,7 +46,7 @@ namespace BTCPayServer.Tests
             // Reset this using `dotnet user-secrets remove RunSeleniumInBrowser`
 
             var chromeDriverPath = config["ChromeDriverDirectory"] ?? (Server.PayTester.InContainer ? "/usr/bin" : Directory.GetCurrentDirectory());
-
+            
             var options = new ChromeOptions();
             if (!runInBrowser)
             {
@@ -58,6 +57,8 @@ namespace BTCPayServer.Tests
             options.AddArgument("start-maximized");
             if (Server.PayTester.InContainer)
             {
+                // Shot in the dark to fix https://stackoverflow.com/questions/53902507/unknown-error-session-deleted-because-of-page-crash-from-unknown-error-cannot
+                options.AddArgument("--disable-dev-shm-usage");
                 Driver = new OpenQA.Selenium.Remote.RemoteWebDriver(new Uri("http://selenium:4444/wd/hub"), new RemoteSessionSettings(options));
                 var containerIp = File.ReadAllText("/etc/hosts").Split('\n', StringSplitOptions.RemoveEmptyEntries).Last()
                     .Split('\t', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
@@ -144,7 +145,14 @@ namespace BTCPayServer.Tests
                 Driver.FindElement(By.Id("IsAdmin")).Click();
             Driver.FindElement(By.Id("RegisterButton")).Click();
             Driver.AssertNoError();
+            CreatedUser = usr;
             return usr;
+        }
+        string CreatedUser;
+
+        public TestAccount AsTestAccount()
+        {
+            return new TestAccount(Server) { RegisterDetails = new Models.AccountViewModels.RegisterViewModel() { Password = "123456", Email = CreatedUser } };
         }
 
         public (string storeName, string storeId) CreateNewStore(bool keepId = true)
@@ -376,6 +384,8 @@ namespace BTCPayServer.Tests
             {
                 GoToUrl($"/stores/{storeId}/");
                 StoreId = storeId;
+                if (WalletId != null)
+                    WalletId = new WalletId(storeId, WalletId.CryptoCode);
             }
                 
             Driver.FindElement(By.Id("StoreNav-StoreSettings")).Click();
@@ -400,9 +410,9 @@ namespace BTCPayServer.Tests
         public void GoToWalletSettings(string cryptoCode = "BTC")
         {
             Driver.FindElement(By.Id($"StoreNav-Wallet{cryptoCode}")).Click();
-            if (Driver.PageSource.Contains("id=\"SectionNav-Settings\""))
+            if (Driver.PageSource.Contains("id=\"WalletNav-Settings\""))
             {
-                Driver.FindElement(By.Id("SectionNav-Settings")).Click();
+                Driver.FindElement(By.Id("WalletNav-Settings")).Click();
             }
         }
 
@@ -422,7 +432,7 @@ namespace BTCPayServer.Tests
             Driver.FindElement(By.Id($"StoreSelectorMenuItem-{storeId}")).Click();
         }
 
-        public void GoToInvoiceCheckout(string? invoiceId = null)
+        public void GoToInvoiceCheckout(string invoiceId = null)
         {
             invoiceId ??= InvoiceId;
             Driver.FindElement(By.Id("StoreNav-Invoices")).Click();
@@ -450,11 +460,11 @@ namespace BTCPayServer.Tests
 
         public void GoToProfile(ManageNavPages navPages = ManageNavPages.Index)
         {
-            Driver.FindElement(By.Id("Nav-Account")).Click();
-            Driver.FindElement(By.Id("Nav-ManageAccount")).Click();
+            Driver.WaitForAndClick(By.Id("Nav-Account"));
+            Driver.WaitForAndClick(By.Id("Nav-ManageAccount"));
             if (navPages != ManageNavPages.Index)
             {
-                Driver.FindElement(By.Id($"SectionNav-{navPages.ToString()}")).Click();
+                Driver.WaitForAndClick(By.Id($"SectionNav-{navPages.ToString()}"));
             }
         }
 
@@ -507,17 +517,30 @@ namespace BTCPayServer.Tests
         }
         string InvoiceId;
 
-        public async Task FundStoreWallet(WalletId walletId = null, int coins = 1, decimal denomination = 1m)
+        public async Task<string> FundStoreWallet(WalletId walletId = null, int coins = 1, decimal denomination = 1m)
         {
             walletId ??= WalletId;
             GoToWallet(walletId, WalletsNavPages.Receive);
             Driver.FindElement(By.Id("generateButton")).Click();
-            var addressStr = Driver.FindElement(By.Id("address")).GetProperty("value");
+            var addressStr = Driver.FindElement(By.Id("address")).GetAttribute("value");
             var address = BitcoinAddress.Create(addressStr, ((BTCPayNetwork)Server.NetworkProvider.GetNetwork(walletId.CryptoCode)).NBitcoinNetwork);
             for (var i = 0; i < coins; i++)
             {
-                await Server.ExplorerNode.SendToAddressAsync(address, Money.Coins(denomination));
+                bool mined = false;
+                retry:
+                try
+                {
+                    await Server.ExplorerNode.SendToAddressAsync(address, Money.Coins(denomination));
+                }
+                catch (RPCException) when (!mined)
+                {
+                    mined = true;
+                    await Server.ExplorerNode.GenerateAsync(1);
+                    goto retry;
+                }
             }
+            Driver.Navigate().Refresh();
+            return addressStr;
         }
 
         private void CheckForJSErrors()
@@ -547,9 +570,14 @@ namespace BTCPayServer.Tests
         {
             walletId ??= WalletId;
             Driver.Navigate().GoToUrl(new Uri(ServerUri, $"wallets/{walletId}"));
-            if (navPages != WalletsNavPages.Transactions)
+            if (navPages == WalletsNavPages.PSBT)
             {
-                Driver.FindElement(By.Id($"SectionNav-{navPages}")).Click();
+                Driver.FindElement(By.Id("WalletNav-Send")).Click();
+                Driver.FindElement(By.Id("PSBT")).Click();
+            }
+            else if (navPages != WalletsNavPages.Transactions)
+            {
+                Driver.FindElement(By.Id($"WalletNav-{navPages}")).Click();
             }
         }
 

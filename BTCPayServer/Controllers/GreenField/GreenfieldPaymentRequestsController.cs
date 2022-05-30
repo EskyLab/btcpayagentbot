@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
@@ -37,7 +38,7 @@ namespace BTCPayServer.Controllers.Greenfield
         {
             var prs = await _paymentRequestRepository.FindPaymentRequests(
                 new PaymentRequestQuery() { StoreId = storeId, IncludeArchived = includeArchived });
-            return Ok(prs.Items.Select(FromModel));
+            return Ok(prs.Select(FromModel));
         }
 
         [Authorize(Policy = Policies.CanViewPaymentRequests, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
@@ -47,12 +48,12 @@ namespace BTCPayServer.Controllers.Greenfield
             var pr = await _paymentRequestRepository.FindPaymentRequests(
                 new PaymentRequestQuery() { StoreId = storeId, Ids = new[] { paymentRequestId } });
 
-            if (pr.Total == 0)
+            if (pr.Length == 0)
             {
                 return PaymentRequestNotFound();
             }
 
-            return Ok(FromModel(pr.Items.First()));
+            return Ok(FromModel(pr.First()));
         }
 
         [Authorize(Policy = Policies.CanModifyPaymentRequests,
@@ -62,12 +63,12 @@ namespace BTCPayServer.Controllers.Greenfield
         {
             var pr = await _paymentRequestRepository.FindPaymentRequests(
                 new PaymentRequestQuery() { StoreId = storeId, Ids = new[] { paymentRequestId }, IncludeArchived = false });
-            if (pr.Total == 0)
+            if (pr.Length == 0)
             {
                 return PaymentRequestNotFound();
             }
 
-            var updatedPr = pr.Items.First();
+            var updatedPr = pr.First();
             updatedPr.Archived = true;
             await _paymentRequestRepository.CreateOrUpdatePaymentRequest(updatedPr);
             return Ok();
@@ -110,12 +111,12 @@ namespace BTCPayServer.Controllers.Greenfield
             request.Currency ??= StoreData.GetStoreBlob().DefaultCurrency;
             var pr = await _paymentRequestRepository.FindPaymentRequests(
                 new PaymentRequestQuery() { StoreId = storeId, Ids = new[] { paymentRequestId } });
-            if (pr.Total == 0)
+            if (pr.Length == 0)
             {
                 return PaymentRequestNotFound();
             }
 
-            var updatedPr = pr.Items.First();
+            var updatedPr = pr.First();
             updatedPr.SetBlob(request);
 
             return Ok(FromModel(await _paymentRequestRepository.CreateOrUpdatePaymentRequest(updatedPr)));

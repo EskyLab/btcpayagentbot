@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
@@ -14,7 +15,6 @@ using Microsoft.Extensions.Logging;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using NLog;
 using Encoders = NBitcoin.DataEncoders.Encoders;
 using InvoiceData = BTCPayServer.Data.InvoiceData;
 
@@ -66,7 +66,6 @@ namespace BTCPayServer.Services.Invoices
 
         public async Task<bool> RemovePendingInvoice(string invoiceId)
         {
-            Logs.PayServer.LogInformation($"Remove pending invoice {invoiceId}");
             using var ctx = _applicationDbContextFactory.CreateContext();
             ctx.PendingInvoices.Remove(new PendingInvoiceData() { Id = invoiceId });
             try
@@ -89,7 +88,20 @@ namespace BTCPayServer.Services.Invoices
                 .ToListAsync()).Select(ToEntity);
         }
 
-        public async Task<string[]> GetPendingInvoices()
+        public async Task<InvoiceEntity[]> GetPendingInvoices(bool includeAddressData = false, bool skipNoPaymentInvoices = false)
+        {
+            using var ctx = _applicationDbContextFactory.CreateContext();
+            var q = ctx.PendingInvoices.AsQueryable();
+            q = q.Include(o => o.InvoiceData)
+                 .ThenInclude(o => o.Payments);
+            if (includeAddressData)
+                q = q.Include(o => o.InvoiceData)
+                    .ThenInclude(o => o.AddressInvoices);
+            if (skipNoPaymentInvoices)
+                q = q.Where(i => i.InvoiceData.Payments.Any());
+            return (await q.Select(o => o.InvoiceData).ToArrayAsync()).Select(ToEntity).ToArray();
+        }
+        public async Task<string[]> GetPendingInvoiceIds()
         {
             using var ctx = _applicationDbContextFactory.CreateContext();
             return await ctx.PendingInvoices.AsQueryable().Select(data => data.Id).ToArrayAsync();
@@ -184,12 +196,6 @@ namespace BTCPayServer.Services.Invoices
                         InvoiceDataId = invoice.Id,
                         CreatedTime = DateTimeOffset.UtcNow,
                     }.Set(address, paymentMethod.GetId()));
-
-                    await context.HistoricalAddressInvoices.AddAsync(new HistoricalAddressInvoiceData()
-                    {
-                        InvoiceDataId = invoice.Id,
-                        Assigned = DateTimeOffset.UtcNow
-                    }.SetAddress(paymentDestination, paymentMethod.GetId().ToString()));
                     textSearch.Add(paymentDestination);
                     textSearch.Add(paymentMethod.Calculate().TotalDue.ToString());
                 }
@@ -271,10 +277,6 @@ namespace BTCPayServer.Services.Invoices
                 return false;
 
             var existingPaymentMethod = paymentMethod.GetPaymentMethodDetails();
-            if (existingPaymentMethod.GetPaymentDestination() != null)
-            {
-                MarkUnassigned(invoiceId, context, paymentMethod.GetId());
-            }
             paymentMethod.SetPaymentMethodDetails(paymentMethodDetails);
 #pragma warning disable CS0618
             if (network.IsBTC)
@@ -291,11 +293,6 @@ namespace BTCPayServer.Services.Invoices
                 CreatedTime = DateTimeOffset.UtcNow
             }
                 .Set(GetDestination(paymentMethod), paymentMethod.GetId()));
-            await context.HistoricalAddressInvoices.AddAsync(new HistoricalAddressInvoiceData()
-            {
-                InvoiceDataId = invoiceId,
-                Assigned = DateTimeOffset.UtcNow
-            }.SetAddress(paymentMethodDetails.GetPaymentDestination(), network.CryptoCode));
 
             AddToTextSearch(context, invoice, paymentMethodDetails.GetPaymentDestination());
             await context.SaveChangesAsync();
@@ -320,11 +317,6 @@ namespace BTCPayServer.Services.Invoices
                     CreatedTime = DateTimeOffset.UtcNow
                 }
                     .Set(GetDestination(paymentMethod), paymentMethod.GetId()));
-                await context.HistoricalAddressInvoices.AddAsync(new HistoricalAddressInvoiceData()
-                {
-                    InvoiceDataId = invoiceId,
-                    Assigned = DateTimeOffset.UtcNow
-                }.SetAddress(paymentMethod.GetPaymentMethodDetails().GetPaymentDestination(), network.CryptoCode));
             }
             invoiceEntity.SetPaymentMethod(paymentMethod);
             invoice.Blob = ToBytes(invoiceEntity, network);
@@ -364,33 +356,6 @@ namespace BTCPayServer.Services.Invoices
             catch (DbUpdateException) { } // Probably the invoice does not exists anymore
         }
 
-        private static void MarkUnassigned(string invoiceId, ApplicationDbContext context,
-            PaymentMethodId paymentMethodId)
-        {
-            var paymentMethodIdStr = paymentMethodId?.ToString();
-            var addresses = context.HistoricalAddressInvoices.Where(data =>
-                (data.InvoiceDataId == invoiceId && paymentMethodIdStr == null ||
-#pragma warning disable CS0618 // Type or member is obsolete
-                 data.CryptoCode == paymentMethodIdStr) &&
-#pragma warning restore CS0618 // Type or member is obsolete
-                data.UnAssigned == null);
-            foreach (var historicalAddressInvoiceData in addresses)
-            {
-                historicalAddressInvoiceData.UnAssigned = DateTimeOffset.UtcNow;
-            }
-        }
-
-        public async Task UnaffectAddress(string invoiceId)
-        {
-            await using var context = _applicationDbContextFactory.CreateContext();
-            MarkUnassigned(invoiceId, context, null);
-            try
-            {
-                await context.SaveChangesAsync();
-            }
-            catch (DbUpdateException) { } //Possibly, it was unassigned before
-        }
-
         public static void AddToTextSearch(ApplicationDbContext context, InvoiceData invoice, params string[] terms)
         {
             var filteredTerms = terms.Where(t => !string.IsNullOrWhiteSpace(t)
@@ -398,6 +363,14 @@ namespace BTCPayServer.Services.Invoices
                 .Distinct()
                 .Select(s => new InvoiceSearchData() { InvoiceDataId = invoice.Id, Value = s.Truncate(512) });
             context.AddRange(filteredTerms);
+        }
+
+        public static void RemoveFromTextSearch(ApplicationDbContext context, InvoiceData invoice,
+            string term)
+        {
+            var query = context.InvoiceSearches.AsQueryable();
+            var filteredQuery = query.Where( st => st.InvoiceDataId.Equals(invoice.Id) && st.Value.Equals(term));
+            context.InvoiceSearches.RemoveRange(filteredQuery);
         }
 
         public async Task UpdateInvoiceStatus(string invoiceId, InvoiceState invoiceState)
@@ -462,7 +435,26 @@ namespace BTCPayServer.Services.Invoices
                                             StringComparison.InvariantCultureIgnoreCase)))
                 return null;
             var blob = invoiceData.GetBlob(_btcPayNetworkProvider);
-            blob.Metadata = InvoiceMetadata.FromJObject(metadata);
+            
+            var newMetadata = InvoiceMetadata.FromJObject(metadata);
+            var oldOrderId = blob.Metadata.OrderId;
+            var newOrderId = newMetadata.OrderId;
+
+            if (newOrderId != oldOrderId)
+            {
+                // OrderId is saved in 2 places: (1) the invoice table and (2) in the metadata field. We are updating both for consistency.
+                invoiceData.OrderId = newOrderId;
+                
+                if (oldOrderId != null && (newOrderId is null || !newOrderId.Equals(oldOrderId, StringComparison.InvariantCulture)))
+                {
+                    RemoveFromTextSearch(context, invoiceData, oldOrderId);
+                }
+                if (newOrderId != null) {
+                	AddToTextSearch(context, invoiceData, new[] { newOrderId });
+                }
+            }
+
+            blob.Metadata = newMetadata;
             invoiceData.Blob = ToBytes(blob);
             await context.SaveChangesAsync().ConfigureAwait(false);
             return ToEntity(invoiceData);
@@ -538,7 +530,7 @@ namespace BTCPayServer.Services.Invoices
                     .Invoices
                     .Include(o => o.Payments);
             if (includeAddressData)
-                query = query.Include(o => o.HistoricalAddressInvoices).Include(o => o.AddressInvoices);
+                query = query.Include(o => o.AddressInvoices);
             query = query.Where(i => i.Id == id);
 
             var invoice = (await query.ToListAsync()).FirstOrDefault();
@@ -579,10 +571,6 @@ namespace BTCPayServer.Services.Invoices
             entity.Status = state.Status;
             entity.RefundMail = invoice.CustomerEmail;
             entity.Refundable = false;
-            if (invoice.HistoricalAddressInvoices != null)
-            {
-                entity.HistoricalAddresses = invoice.HistoricalAddressInvoices.ToArray();
-            }
             if (invoice.AddressInvoices != null)
             {
                 entity.AvailableAddressHashes = invoice.AddressInvoices.Select(a => a.GetAddress() + a.GetPaymentMethodId().ToString()).ToHashSet();
@@ -614,14 +602,32 @@ namespace BTCPayServer.Services.Invoices
 
             if (queryObject.InvoiceId != null && queryObject.InvoiceId.Length > 0)
             {
-                var statusSet = queryObject.InvoiceId.ToHashSet().ToArray();
-                query = query.Where(i => statusSet.Contains(i.Id));
+                if (queryObject.InvoiceId.Length > 1)
+                {
+                    var statusSet = queryObject.InvoiceId.ToHashSet().ToArray();
+                    query = query.Where(i => statusSet.Contains(i.Id));
+                }
+                else
+                {
+                    var invoiceId = queryObject.InvoiceId.First();
+                    query = query.Where(i => i.Id == invoiceId);
+                }
             }
 
             if (queryObject.StoreId != null && queryObject.StoreId.Length > 0)
             {
-                var stores = queryObject.StoreId.ToHashSet().ToArray();
-                query = query.Where(i => stores.Contains(i.StoreDataId));
+                if (queryObject.StoreId.Length > 1)
+                {
+                    var stores = queryObject.StoreId.ToHashSet().ToArray();
+                    query = query.Where(i => stores.Contains(i.StoreDataId));
+                }
+                // Big performant improvement to use Where rather than Contains when possible
+                // In our test, the first gives  720.173 ms vs 40.735 ms
+                else
+                {
+                    var storeId = queryObject.StoreId.First();
+                    query = query.Where(i => i.StoreDataId == storeId);
+                }
             }
 
             if (!string.IsNullOrEmpty(queryObject.TextSearch))
@@ -700,20 +706,13 @@ namespace BTCPayServer.Services.Invoices
             return query;
         }
 
-        public async Task<int> GetInvoicesTotal(InvoiceQuery queryObject)
-        {
-            using var context = _applicationDbContextFactory.CreateContext();
-            var query = GetInvoiceQuery(context, queryObject);
-            return await query.CountAsync();
-        }
-
         public async Task<InvoiceEntity[]> GetInvoices(InvoiceQuery queryObject)
         {
             using var context = _applicationDbContextFactory.CreateContext();
             var query = GetInvoiceQuery(context, queryObject);
             query = query.Include(o => o.Payments);
             if (queryObject.IncludeAddresses)
-                query = query.Include(o => o.HistoricalAddressInvoices).Include(o => o.AddressInvoices);
+                query = query.Include(o => o.AddressInvoices);
             if (queryObject.IncludeEvents)
                 query = query.Include(o => o.Events);
             var data = await query.ToArrayAsync().ConfigureAwait(false);
@@ -743,18 +742,21 @@ namespace BTCPayServer.Services.Invoices
             return status;
         }
 
-        internal static byte[] ToBytes<T>(T obj, BTCPayNetworkBase network = null)
+        public static byte[] ToBytes<T>(T obj, BTCPayNetworkBase network = null)
         {
             return ZipUtils.Zip(ToJsonString(obj, network));
         }
 
+        public static T FromBytes<T>(byte[] blob, BTCPayNetworkBase network = null)
+        {
+            return network == null
+                ? JsonConvert.DeserializeObject<T>(ZipUtils.Unzip(blob), DefaultSerializerSettings)
+                : network.ToObject<T>(ZipUtils.Unzip(blob));
+        }
+
         public static string ToJsonString<T>(T data, BTCPayNetworkBase network)
         {
-            if (network == null)
-            {
-                return JsonConvert.SerializeObject(data, DefaultSerializerSettings);
-            }
-            return network.ToString(data);
+            return network == null ? JsonConvert.SerializeObject(data, DefaultSerializerSettings) : network.ToString(data);
         }
     }
 

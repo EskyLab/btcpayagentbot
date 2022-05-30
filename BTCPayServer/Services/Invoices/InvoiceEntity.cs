@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
 using BTCPayServer.JsonConverters;
@@ -429,7 +430,6 @@ namespace BTCPayServer.Services.Invoices
 
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
         public DateTimeOffset MonitoringExpiration { get; set; }
-        public HistoricalAddressInvoiceData[] HistoricalAddresses { get; set; }
 
         public HashSet<string> AvailableAddressHashes { get; set; }
         public bool ExtendedNotifications { get; set; }

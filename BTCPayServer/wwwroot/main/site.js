@@ -1,4 +1,12 @@
+const flatpickrInstances = [];
+
 document.addEventListener("DOMContentLoaded", function () {
+    // sticky header
+    const stickyHeader = document.querySelector('.sticky-header-setup + .sticky-header');
+    if (stickyHeader) {
+        document.documentElement.style.scrollPaddingTop = `calc(${stickyHeader.offsetHeight}px + var(--btcpay-space-m))`;
+    }
+    
     // initialize timezone offset value if field is present in page
     var timezoneOffset = new Date().getTimezoneOffset();
     $("#TimezoneOffset").val(timezoneOffset);
@@ -22,7 +30,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     updateTimeAgo();
     
-    // intializing date time pickers throughts website
+    // intializing date time pickers
     $(".flatdtpicker").each(function () {
         var element = $(this);
         var fdtp = element.attr("data-fdtp");
@@ -30,12 +38,12 @@ document.addEventListener("DOMContentLoaded", function () {
         // support for initializing with special options per instance
         if (fdtp) {
             var parsed = JSON.parse(fdtp);
-            element.flatpickr(parsed);
+            flatpickrInstances.push(element.flatpickr(parsed));
         } else {
             var min = element.attr("min");
             var max = element.attr("max");
             var defaultDate = element.attr("value");
-            element.flatpickr({
+            flatpickrInstances.push(element.flatpickr({
                 enableTime: true,
                 enableSeconds: true,
                 dateFormat: 'Z',
@@ -47,13 +55,29 @@ document.addEventListener("DOMContentLoaded", function () {
                 time_24hr: true,
                 defaultHour: 0,
                 static: true
-            });
+            }));
         }
     });
-
+    
+    // rich text editor
+    if ($.summernote) {
+        $('.richtext').summernote({
+            minHeight: 300,
+            tableClassName: 'table table-sm',
+            insertTableMaxSize: {
+                col: 5,
+                row: 10
+            },
+            codeviewFilter: true,
+            codeviewFilterRegex: new RegExp($.summernote.options.codeviewFilterRegex.source + '|<.*?( on\\w+?=.*?)>', 'gi')
+        });
+    }
 
     $(".input-group-clear").on("click", function () {
-        $(this).parents(".input-group").find("input").val(null);
+        const input = $(this).parents(".input-group").find("input");
+        const event = new CustomEvent('input-group-clear-input-value-cleared', { detail: input });
+        input.val(null);
+        document.dispatchEvent(event);
         handleInputGroupClearButtonDisplay(this);
     });
 

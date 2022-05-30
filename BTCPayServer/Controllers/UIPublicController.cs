@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Data;
 using BTCPayServer.Models;
 using BTCPayServer.Models.StoreViewModels;
@@ -66,7 +67,8 @@ namespace BTCPayServer.Controllers
                     NotificationEmail = model.NotifyEmail,
                     NotificationURL = model.ServerIpn,
                     RedirectURL = model.BrowserRedirect,
-                    FullNotifications = true
+                    FullNotifications = true,
+                    DefaultPaymentMethod = model.DefaultPaymentMethod
                 }, store, HttpContext.Request.GetAbsoluteRoot(), cancellationToken: cancellationToken);
             }
             catch (BitpayHttpException e)

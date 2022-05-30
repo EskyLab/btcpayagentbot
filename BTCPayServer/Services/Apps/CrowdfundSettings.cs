@@ -12,7 +12,21 @@ namespace BTCPayServer.Services.Apps
         public DateTime? EndDate { get; set; }
 
         public string TargetCurrency { get; set; }
-        public decimal? TargetAmount { get; set; }
+        decimal? _TargetAmount;
+        public decimal? TargetAmount
+        {
+            get
+            {
+                // In the past, target amount might have been 0, creating exception
+                if (_TargetAmount is decimal v && v == 0.0m)
+                    return null;
+                return _TargetAmount;
+            }
+            set
+            {
+                _TargetAmount = value;
+            }
+        }
 
         public bool EnforceTargetAmount { get; set; }
         public string CustomCSSLink { get; set; }
@@ -21,8 +35,8 @@ namespace BTCPayServer.Services.Apps
         public string Tagline { get; set; }
         public string EmbeddedCSS { get; set; }
         public string PerksTemplate { get; set; }
-        public bool DisqusEnabled { get; set; } = false;
-        public bool SoundsEnabled { get; set; } = true;
+        public bool DisqusEnabled { get; set; }
+        public bool SoundsEnabled { get; set; }
         public string DisqusShortname { get; set; }
         public bool AnimationsEnabled { get; set; } = true;
         public int ResetEveryAmount { get; set; } = 1;

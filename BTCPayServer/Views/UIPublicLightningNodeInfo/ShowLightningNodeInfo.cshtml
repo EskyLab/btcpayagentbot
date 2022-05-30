@@ -2,11 +2,12 @@
 @inject ISettingsRepository _settingsRepository
 
 @using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Lightning
 @model BTCPayServer.Controllers.ShowLightningNodeInfoViewModel
+@inject BTCPayServer.Services.ThemeSettings Theme
 @{
     Layout = null;
-    var theme = await _settingsRepository.GetTheme();
 }
 <!DOCTYPE html>
 <html>
@@ -19,7 +20,7 @@
     <link rel="apple-touch-startup-image" href="~/img/splash.png" asp-append-version="true">
     <link rel="manifest" href="~/manifest.json">
     <bundle name="wwwroot/bundles/main-bundle.min.css" asp-append-version="true" />
-    <link href="@Context.Request.GetRelativePathOrAbsolute(theme.CssUri)" rel="stylesheet" asp-append-version="true"/>
+    <link href="@Context.Request.GetRelativePathOrAbsolute(Theme.CssUri)" rel="stylesheet" asp-append-version="true"/>
     <link href="~/main/qrcode.css" rel="stylesheet" asp-append-version="true" />
 </head>
 <body>
@@ -58,7 +59,7 @@
                                 {
                                     var nodeInfo = Model.NodeInfo[i];
                                     <div class="tab-pane fade @(i == 0 ? "show active" : "")" id="nodeInfo-@nodeInfo.Id" role="tabpanel" aria-labelledby="nodeInfo-tab-@nodeInfo.Id">
-                                        <div class="qr-container my-4">
+                                        <div class="qr-container my-4 w-100">
                                             <img alt="@Model.CryptoCode" class="qr-icon" src="@Model.CryptoImage"/>
                                             <vc:qr-code data="@nodeInfo.ToString()"/>
                                         </div>

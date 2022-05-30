@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices.ComTypes;
+using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Configuration;
 using BTCPayServer.Storage.Services;
 using BTCPayServer.Storage.Services.Providers;
@@ -23,6 +24,7 @@ namespace BTCPayServer.Storage
         {
             serviceCollection.AddSingleton<StoredFileRepository>();
             serviceCollection.AddSingleton<FileService>();
+            serviceCollection.AddSingleton<IFileService>(provider => provider.GetRequiredService<FileService>());
             //            serviceCollection.AddSingleton<IStorageProviderService, AmazonS3FileProviderService>();
             serviceCollection.AddSingleton<IStorageProviderService, AzureBlobStorageFileProviderService>();
             serviceCollection.AddSingleton<IStorageProviderService, FileSystemFileProviderService>();
@@ -41,6 +43,11 @@ namespace BTCPayServer.Storage
                 else
                 {
                     dirInfo = new DirectoryInfo(datadirs.Value.StorageDir);
+                }
+                
+                if (!Directory.Exists(datadirs.Value.TempDir))
+                {
+                    Directory.CreateDirectory(datadirs.Value.TempDir);
                 }
 
                 DirectoryInfo tmpdirInfo;

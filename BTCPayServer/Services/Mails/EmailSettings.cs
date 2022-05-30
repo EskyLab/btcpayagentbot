@@ -1,57 +1,16 @@
-using System.ComponentModel.DataAnnotations;
-using System.Net;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
+using BTCPayServer.Client.Models;
 using MailKit.Net.Smtp;
 using MimeKit;
-using Newtonsoft.Json;
 
 namespace BTCPayServer.Services.Mails
 {
-    public class EmailSettings
+    public class EmailSettings : EmailSettingsData
     {
-        [Display(Name = "SMTP Server")]
-        public string Server
-        {
-            get; set;
-        }
-
-        public int? Port
-        {
-            get; set;
-        }
-
-        public string Login
-        {
-            get; set;
-        }
-
-        public string Password
-        {
-            get; set;
-        }
-
-        [Display(Name = "Sender's display name")]
-        public string FromDisplay
-        {
-            get; set;
-        }
-
-        [EmailAddress]
-        [Display(Name = "Sender's email address")]
-        public string From
-        {
-            get; set;
-        }
-
         public bool IsComplete()
         {
-            return !string.IsNullOrWhiteSpace(Server) &&
-                   Port is int &&
-                   !string.IsNullOrWhiteSpace(Login) &&
-                   !string.IsNullOrWhiteSpace(Password);
+            return !string.IsNullOrWhiteSpace(Server) && Port is int;
         }
 
         public MimeMessage CreateMailMessage(MailboxAddress to, string subject, string message, bool isHtml)
@@ -87,7 +46,8 @@ namespace BTCPayServer.Services.Mails
 #pragma warning restore CA5359 // Do Not Disable Certificate Validation
                 }
                 await client.ConnectAsync(Server, Port.Value, MailKit.Security.SecureSocketOptions.Auto, connectCancel.Token);
-                await client.AuthenticateAsync(Login, Password, connectCancel.Token);
+                if ((client.Capabilities & SmtpCapabilities.Authentication) != 0)
+                    await client.AuthenticateAsync(Login ?? string.Empty, Password ?? string.Empty, connectCancel.Token);
             }
             catch
             {

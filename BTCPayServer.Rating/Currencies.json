@@ -1260,14 +1260,21 @@
       "crypto":true
    },
    {
-      "name":"POLIS",
-      "code":"POLIS",
+      "name":"YEC",
+      "code":"YEC",
       "divisibility":8,
       "symbol":null,
       "crypto":true
    },
    {
-      "name":"Althash",
+      "name":"ZEC",
+      "code":"ZEC",
+      "divisibility":8,
+      "symbol":null,
+      "crypto":true
+   },
+   {
+      "name":"Htmlcoin",
       "code":"HTML",
       "divisibility":8,
       "symbol":null,

@@ -3,14 +3,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Client;
 using BTCPayServer.Client.Models;
 using BTCPayServer.Configuration;
@@ -40,7 +39,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Xunit;
 using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace BTCPayServer.Tests
 {
@@ -515,9 +513,8 @@ namespace BTCPayServer.Tests
             {
                 Assert.Single(info.Labels);
                 var l = Assert.IsType<PayoutLabel>(info.Labels["payout"]);
-                Assert.Equal("pullPaymentId", l.PullPaymentId);
+                Assert.Single(Assert.Single(l.PullPaymentPayouts, k => k.Key == "pullPaymentId").Value, "payoutId");
                 Assert.Equal("walletId", l.WalletId);
-                Assert.Equal("payoutId", l.PayoutId);
             }
 
             var payoutId = "payoutId";
@@ -1764,6 +1761,19 @@ namespace BTCPayServer.Tests
             var paymentMethod = InvoiceWatcher.GetNearestClearedPayment(paymentMethods, out var accounting2);
             Assert.Equal(btc.CryptoCode, paymentMethod.CryptoCode);
 #pragma warning restore CS0618
+        }
+
+        [Fact]
+        public void AllPoliciesShowInUI()
+        {
+            foreach (var policy in Policies.AllPolicies)
+            {
+               Assert.True( UIManageController.AddApiKeyViewModel.PermissionValueItem.PermissionDescriptions.ContainsKey(policy));
+               if (Policies.IsStorePolicy(policy))
+               {
+                   Assert.True( UIManageController.AddApiKeyViewModel.PermissionValueItem.PermissionDescriptions.ContainsKey($"{policy}:"));
+               }
+            }
         }
     }
 }

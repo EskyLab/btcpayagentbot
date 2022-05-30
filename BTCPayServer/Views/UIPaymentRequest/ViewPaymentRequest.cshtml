@@ -5,10 +5,10 @@
 @addTagHelper *, BundlerMinifier.TagHelpers
 @inject BTCPayServer.Services.BTCPayServerEnvironment env
 @inject ISettingsRepository _settingsRepository
+@inject BTCPayServer.Services.ThemeSettings Theme
 @{
     ViewData["Title"] = Model.Title;
     Layout = null;
-    var theme = await _settingsRepository.GetTheme();
     string StatusClass(InvoiceState state)
     {
         switch (state.Status.ToModernStatus())
@@ -37,14 +37,8 @@
 <!DOCTYPE html>
 <html lang="en" @(env.IsDeveloping ? " data-devenv" : "")>
 <head>
-    <title>@Model.Title</title>
-    <meta charset="utf-8" />
-    <meta name="robots" content="noindex,nofollow">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <bundle name="wwwroot/bundles/main-bundle.min.css" asp-append-version="true" />
+    <partial name="LayoutHead" />
     <bundle name="wwwroot/bundles/payment-request-bundle.min.css" asp-append-version="true"></bundle>
-    <link href="@Context.Request.GetRelativePathOrAbsolute(theme.CssUri)" rel="stylesheet" asp-append-version="true"/>
     @if (Model.CustomCSSLink != null)
     {
         <link href="@Model.CustomCSSLink" rel="stylesheet" />
@@ -52,6 +46,7 @@
     <script type="text/javascript">
         var srvModel = @Safe.Json(Model);
     </script>
+    <script src="~/vendor/vuejs/vue.min.js" asp-append-version="true"></script>
     <bundle name="wwwroot/bundles/payment-request-bundle.min.js" asp-append-version="true"></bundle>
     @*We need to make sure btcpay.js is not bundled, else it will not work if there is a RootPath*@
     <script src="~/modal/btcpay.js" asp-append-version="true"></script>
@@ -61,12 +56,6 @@
         .invoice + .invoice { margin-top: var(--btcpay-space-m); }
         .invoice .badge { font-size: var(--btcpay-font-size-s); }
     </style>
-    <noscript>
-        <style>
-            .hide-when-js, [v-cloak] { display: block !important; }
-            .only-for-js { display: none !important; }
-        </style>
-    </noscript>
 </head>
 <body>
     <div id="app" class="min-vh-100 d-flex flex-column">
@@ -111,7 +100,7 @@
                                         <div class="row">
                                             <div class="col col-12 col-sm-6 col-md-12">
                                                 <div class="input-group">
-                                                    <input type="number" class="form-control text-end hide-number-spin" name="amount" value="@Model.AmountDue" @if (!Model.AllowCustomPaymentAmounts) { @("readonly") } max="@Model.AmountDue" step="any" placeholder="Amount" required />
+                                                    <input type="number" inputmode="decimal" class="form-control text-end hide-number-spin" name="amount" value="@Model.AmountDue" @if (!Model.AllowCustomPaymentAmounts) { @("readonly") } max="@Model.AmountDue" step="any" placeholder="Amount" required />
                                                     <span class="input-group-text">@Model.Currency.ToUpper()</span>
                                                 </div>
                                             </div>
@@ -153,7 +142,7 @@
                                     <div class="row">
                                         <div class="col col-12 col-sm-6 col-md-12">
                                             <div class="input-group">
-                                                <input type="number" class="form-control text-end hide-number-spin" v-model="customAmount" :readonly="!srvModel.allowCustomPaymentAmounts" :max="srvModel.amountDue" placeholder="Amount" step="any" required />
+                                                <input type="number" inputmode="decimal" class="form-control text-end hide-number-spin" v-model="customAmount" :readonly="!srvModel.allowCustomPaymentAmounts" :max="srvModel.amountDue" placeholder="Amount" step="any" required />
                                                 <span class="input-group-text">{{currency}}</span>
                                             </div>
                                         </div>
@@ -372,10 +361,17 @@
             </div>
         </main>
         <footer class="pt-2 pb-4 d-print-none">
-            <div class="container text-center">
-                Powered by <a href="https://btcpayjungle.com" target="_blank">BTCPay Jungle</a>
+            <div class="container d-flex flex-wrap align-items-center justify-content-center">
+                <span class="text-muted mx-2">
+                    Powered by <a href="btcpayjungle.com" target="_blank" rel="noreferrer noopener">BTCPay Jungle</a>
+                </span>
+                @if (!Theme.CustomTheme)
+                {
+                    <vc:theme-switch css-class="text-muted mx-2" responsive="none"/>
+                }
             </div>
         </footer>
     </div>
+    <partial name="LayoutFoot"/>
 </body>
 </html>

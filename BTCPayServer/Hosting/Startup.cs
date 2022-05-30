@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Configuration;
 using BTCPayServer.Controllers.Greenfield;
 using BTCPayServer.Data;
@@ -112,6 +113,7 @@ namespace BTCPayServer.Hosting
             services.AddScoped<Fido2Service>();
             services.AddSingleton<UserLoginCodeService>();
 			services.AddSingleton<LnurlAuthService>();
+			services.AddSingleton<LightningAddressService>();
             var mvcBuilder = services.AddMvc(o =>
              {
                  o.Filters.Add(new XFrameOptionsAttribute("DENY"));

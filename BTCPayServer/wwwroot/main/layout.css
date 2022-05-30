@@ -17,9 +17,9 @@
     --button-height: 40px;
     --button-padding: 7px;
     --icon-size: 1.5rem;
-    
+    --menu-border: 1px solid var(--btcpay-body-border-light);
     height: var(--header-height);
-    z-index: 9999999;
+    z-index: 1031; /* needs a value between fixed and the offcanvas backdrop, see https://getbootstrap.com/docs/5.1/layout/z-index/ */
 }
 
 #mainMenuHead  {
@@ -174,6 +174,8 @@
 
 #StoreSelectorMenu {
     min-width: 100%;
+    max-height: calc(100vh - var(--header-height));
+    overflow-y: scroll;
 }
 
 /* Logo */
@@ -349,8 +351,10 @@
     top: 0;
     z-index: 1020;
     background: var(--btcpay-body-bg);
-    padding-top: var(--content-padding-top);
-    padding-bottom: var(--btcpay-space-l);
+    /* pull it out of the content padding and adjust its inner padding to make up for that space */
+    margin-left: calc(var(--content-padding-horizontal) * -1);
+    margin-right: calc(var(--content-padding-horizontal) * -1);
+    padding: var(--content-padding-top) var(--content-padding-horizontal) var(--btcpay-space-l);
 }
 
 .sticky-header #SectionNav {
@@ -392,6 +396,7 @@
         top: 0;
         left: 0;
         right: 0;
+        border-bottom: var(--menu-border);
     }
 
     #mainMenuHead  {
@@ -405,6 +410,7 @@
         left: 0;
         width: var(--sidebar-width);
         z-index: 1045;
+        border-right: var(--menu-border);
         color: var(--btcpay-body-text);
         visibility: hidden;
         background-color: inherit;
@@ -491,10 +497,6 @@
         transform: translate(-50%, -50%) rotate(-45deg);
     }
 
-    #mainContent {
-        z-index: 0;
-    }
-
     #SectionNav {
         --scroll-indicator-spacing: var(--btcpay-space-m);
         position: relative;
@@ -557,6 +559,7 @@
         left: 0;
         width: var(--sidebar-width);
         height: 100vh;
+        border-right: var(--menu-border);
     }
 
     #mainMenuHead {

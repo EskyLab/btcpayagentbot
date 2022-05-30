@@ -7,18 +7,13 @@
 
 <form method="post">
     <div class="sticky-header-setup"></div>
-    <header class="sticky-header d-sm-flex align-items-center justify-content-between">
+    <div class="sticky-header d-sm-flex align-items-center justify-content-between">
         <h2 class="mb-0">@ViewData["Title"]</h2>
         <div class="d-flex gap-3 mt-3 mt-sm-0">
             <button type="submit" class="btn btn-primary order-sm-1" id="SaveSettings">Save</button>
             <a class="btn btn-secondary" asp-action="ViewPointOfSale" asp-controller="UIAppsPublic" asp-route-appId="@Model.Id" id="ViewApp" target="app_@Model.AppId">View</a>
-            <a class="btn btn-secondary" asp-action="ListInvoices" asp-controller="UIInvoice" asp-route-searchterm="@Model.SearchTerm">Invoices</a>
         </div>
-    </header>
-    <script>
-        const { offsetHeight } = document.querySelector('.sticky-header-setup + .sticky-header');
-        document.documentElement.style.scrollPaddingTop = `calc(${offsetHeight}px + var(--btcpay-space-m))`;
-    </script>
+    </div>
 
     <partial name="_StatusMessage" />
 
@@ -98,7 +93,7 @@
             <section id="custom-payments" class="p-0">
                 <h3 class="mt-5 mb-4">Custom Payments</h3>
                 <div class="form-group mb-4 d-flex align-items-center">
-                    <input asp-for="ShowCustomAmount" type="checkbox" class="btcpay-toggle me-2" data-bs-toggle="collapse" data-bs-target="#CustomAmountSettings" aria-expanded="@Model.ShowCustomAmount" aria-controls="CustomAmountSettings"/>
+                    <input asp-for="ShowCustomAmount" type="checkbox" class="btcpay-toggle me-3" data-bs-toggle="collapse" data-bs-target="#CustomAmountSettings" aria-expanded="@Model.ShowCustomAmount" aria-controls="CustomAmountSettings"/>
                     <label asp-for="ShowCustomAmount" class="form-label mb-0"></label>
                     <span asp-validation-for="ShowCustomAmount" class="text-danger"></span>
                 </div>
@@ -112,8 +107,8 @@
             </section>
             <section id="tips" class="p-0">
                 <h3 class="mt-5 mb-4">Tips</h3>
-                <div class="form-group d-flex align-items-center mb-0">
-                    <input asp-for="EnableTips" type="checkbox" class="btcpay-toggle me-2" data-bs-toggle="collapse" data-bs-target="#CustomTipsSettings" aria-expanded="@Model.EnableTips" aria-controls="CustomTipsSettings" />
+                <div class="form-group d-flex align-items-center">
+                    <input asp-for="EnableTips" type="checkbox" class="btcpay-toggle me-3" data-bs-toggle="collapse" data-bs-target="#CustomTipsSettings" aria-expanded="@Model.EnableTips" aria-controls="CustomTipsSettings" />
                     <label asp-for="EnableTips" class="form-label mb-0"></label>
                     <span asp-validation-for="EnableTips" class="text-danger"></span>
                 </div>
@@ -255,16 +250,17 @@
     </div>
 </form>
 
-<h3 class="mt-5 mb-4">Other Actions</h3>
-<div id="danger-zone">
+<div class="d-flex gap-3 mt-3">
+    <a class="btn btn-secondary" asp-action="ListInvoices" asp-controller="UIInvoice" asp-route-searchterm="@Model.SearchTerm">Invoices</a>
     <a id="DeleteApp" class="btn btn-outline-danger" asp-action="DeleteApp" asp-route-appId="@Model.Id" data-bs-toggle="modal" data-bs-target="#ConfirmModal" data-description="The app <strong>@Model.AppName</strong> and its settings will be permanently deleted." data-confirm-input="DELETE">Delete this app</a>
 </div>
 
 <partial name="_Confirm" model="@(new ConfirmModel("Delete app", "This app will be removed from this store.", "Delete"))" />
 
 @section PageHeadContent {
-    <link rel="stylesheet" href="~/vendor/highlightjs/default.min.css" asp-append-version="true">
-    <bundle name="wwwroot/bundles/pos-admin-bundle.min.css" asp-append-version="true"></bundle>
+    <link href="~/vendor/highlightjs/default.min.css" rel="stylesheet" asp-append-version="true">
+    <link href="~/vendor/summernote/summernote-bs5.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/main/template-editor.css" rel="stylesheet" asp-append-version="true" />
 }
 
 @section PageFootContent {
@@ -293,7 +289,7 @@
                 <div class="col-sm-3">
                     <label class="form-label" data-required>Price</label>
                     <input class="js-product-price form-control mb-2"
-                           inputmode="numeric"
+                           inputmode="decimal"
                            pattern="\d*"
                            type="number"
                            value="{price}"
@@ -316,7 +312,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Inventory (leave blank to not use inventory feature)</label>
-                <input type="number" step="1" class="js-product-inventory form-control mb-2" value="{inventory}" />
+                <input type="number" inputmode="numeric" step="1" class="js-product-inventory form-control mb-2" value="{inventory}" />
             </div>
             <div class="form-group d-flex align-items-center">
                 <input type="checkbox" class="btcpay-toggle me-2" value="{disabled}" />
@@ -422,5 +418,6 @@
         });
     </script>
 
-    <bundle name="wwwroot/bundles/pos-admin-bundle.min.js" asp-append-version="true"></bundle>
+    <script src="~/vendor/vuejs/vue.min.js" asp-append-version="true"></script>
+    <script src="~/vendor/summernote/summernote-bs5.js" asp-append-version="true"></script>
 }

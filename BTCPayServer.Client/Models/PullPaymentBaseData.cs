@@ -5,6 +5,13 @@ using Newtonsoft.Json;
 
 namespace BTCPayServer.Client.Models
 {
+    public enum PullPaymentState
+    {
+        Active,
+        Expired,
+        Archived,
+        Future
+    }
     public class PullPaymentData
     {
         [JsonConverter(typeof(NBitcoin.JsonConverters.DateTimeToUnixTimeConverter))]
@@ -24,5 +31,6 @@ namespace BTCPayServer.Client.Models
         public TimeSpan BOLT11Expiration { get; set; }
         public bool Archived { get; set; }
         public string ViewLink { get; set; }
+        public bool AutoApproveClaims { get; set; }
     }
 }
