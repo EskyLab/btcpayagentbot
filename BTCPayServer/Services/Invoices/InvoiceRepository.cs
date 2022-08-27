@@ -540,7 +540,7 @@ namespace BTCPayServer.Services.Invoices
             return invoice;
         }
 
-        private InvoiceEntity ToEntity(Data.InvoiceData invoice)
+        public InvoiceEntity ToEntity(Data.InvoiceData invoice)
         {
             var entity = invoice.GetBlob(_btcPayNetworkProvider);
             PaymentMethodDictionary paymentMethods = null;
@@ -570,7 +570,6 @@ namespace BTCPayServer.Services.Invoices
             entity.ExceptionStatus = state.ExceptionStatus;
             entity.Status = state.Status;
             entity.RefundMail = invoice.CustomerEmail;
-            entity.Refundable = false;
             if (invoice.AddressInvoices != null)
             {
                 entity.AvailableAddressHashes = invoice.AddressInvoices.Select(a => a.GetAddress() + a.GetPaymentMethodId().ToString()).ToHashSet();
@@ -578,6 +577,10 @@ namespace BTCPayServer.Services.Invoices
             if (invoice.Events != null)
             {
                 entity.Events = invoice.Events.OrderBy(c => c.Timestamp).ToList();
+            }
+            if (invoice.Refunds != null)
+            {
+                entity.Refunds = invoice.Refunds.OrderBy(c => c.PullPaymentData.StartDate).ToList();
             }
             if (!string.IsNullOrEmpty(entity.RefundMail) && string.IsNullOrEmpty(entity.Metadata.BuyerEmail))
             {
@@ -715,6 +718,8 @@ namespace BTCPayServer.Services.Invoices
                 query = query.Include(o => o.AddressInvoices);
             if (queryObject.IncludeEvents)
                 query = query.Include(o => o.Events);
+            if (queryObject.IncludeRefunds)
+                query = query.Include(o => o.Refunds).ThenInclude(refundData => refundData.PullPaymentData);
             var data = await query.ToArrayAsync().ConfigureAwait(false);
             return data.Select(ToEntity).ToArray();
         }
@@ -825,5 +830,6 @@ namespace BTCPayServer.Services.Invoices
 
         public bool IncludeEvents { get; set; }
         public bool IncludeArchived { get; set; } = true;
+        public bool IncludeRefunds { get; set; }
     }
 }

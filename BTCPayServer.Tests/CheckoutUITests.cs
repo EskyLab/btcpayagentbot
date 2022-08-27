@@ -22,13 +22,12 @@ namespace BTCPayServer.Tests
         [Fact(Timeout = TestTimeout)]
         public async Task CanHandleRefundEmailForm()
         {
-
             using var s = CreateSeleniumTester();
             await s.StartAsync();
             s.GoToRegister();
             s.RegisterNewUser();
             s.CreateNewStore();
-            s.AddDerivationScheme("BTC");
+            s.AddDerivationScheme();
             s.GoToStore(StoreNavPages.CheckoutAppearance);
             s.Driver.FindElement(By.Id("RequiresRefundEmail")).Click();
             s.Driver.FindElement(By.Name("command")).Click();
@@ -38,9 +37,6 @@ namespace BTCPayServer.Tests
             s.Driver.AssertElementNotFound(By.Id("emailAddressFormInput"));
             s.GoToHome();
             s.CreateInvoice();
-            s.Driver.FindElement(By.ClassName("invoice-details-link")).Click();
-            s.Driver.AssertNoError();
-            s.Driver.Navigate().Back();
             s.Driver.FindElement(By.ClassName("invoice-checkout-link")).Click();
             Assert.NotEmpty(s.Driver.FindElements(By.Id("checkoutCtrl")));
 
@@ -70,14 +66,13 @@ namespace BTCPayServer.Tests
         [Fact(Timeout = TestTimeout)]
         public async Task CanHandleRefundEmailForm2()
         {
-
             using var s = CreateSeleniumTester();
             // Prepare user account and store
             await s.StartAsync();
             s.GoToRegister();
             s.RegisterNewUser();
             s.CreateNewStore();
-            s.AddDerivationScheme("BTC");
+            s.AddDerivationScheme();
 
             // Now create an invoice that requires a refund email
             var invoice = s.CreateInvoice(100, "USD", "", null, true);
@@ -104,9 +99,6 @@ namespace BTCPayServer.Tests
 
             // Now create an invoice that doesn't require a refund email
             s.CreateInvoice(100, "USD", "", null, false);
-            s.Driver.FindElement(By.ClassName("invoice-details-link")).Click();
-            s.Driver.AssertNoError();
-            s.Driver.Navigate().Back();
             s.Driver.FindElement(By.ClassName("invoice-checkout-link")).Click();
             Assert.NotEmpty(s.Driver.FindElements(By.Id("checkoutCtrl")));
             s.Driver.AssertElementNotFound(By.Id("emailAddressFormInput"));
@@ -117,9 +109,6 @@ namespace BTCPayServer.Tests
 
             // Now create an invoice that requires refund email but already has one set, email input shouldn't show up
             s.CreateInvoice(100, "USD", "a@g.com", null, true);
-            s.Driver.FindElement(By.ClassName("invoice-details-link")).Click();
-            s.Driver.AssertNoError();
-            s.Driver.Navigate().Back();
             s.Driver.FindElement(By.ClassName("invoice-checkout-link")).Click();
             Assert.NotEmpty(s.Driver.FindElements(By.Id("checkoutCtrl")));
             s.Driver.AssertElementNotFound(By.Id("emailAddressFormInput"));
@@ -135,7 +124,7 @@ namespace BTCPayServer.Tests
             s.GoToRegister();
             s.RegisterNewUser();
             s.CreateNewStore();
-            s.AddDerivationScheme("BTC");
+            s.AddDerivationScheme();
 
             var invoiceId = s.CreateInvoice();
             s.GoToInvoiceCheckout(invoiceId);
@@ -166,7 +155,7 @@ namespace BTCPayServer.Tests
             s.RegisterNewUser(true);
             s.CreateNewStore();
             s.AddLightningNode();
-            s.AddDerivationScheme("BTC");
+            s.AddDerivationScheme();
 
             var invoiceId = s.CreateInvoice(defaultPaymentMethod: "BTC_LightningLike");
             s.GoToInvoiceCheckout(invoiceId);

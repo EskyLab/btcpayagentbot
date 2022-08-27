@@ -33,12 +33,14 @@ using Microsoft.Extensions.Options;
 using NBitcoin;
 using NBitcoin.DataEncoders;
 using NBitcoin.Scripting.Parser;
+using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Xunit;
 using Xunit.Abstractions;
+using StoreData = BTCPayServer.Data.StoreData;
 
 namespace BTCPayServer.Tests
 {
@@ -129,6 +131,39 @@ namespace BTCPayServer.Tests
                     Assert.False(true, $"All docker images '{g.Key}' in docker-compose.yml and docker-compose.altcoins.yml should have the same tags. (Found {string.Join(',', tags)})");
                 }
             }
+        }
+
+        [Fact]
+        public void CanMergeReceiptOptions()
+        {
+            var r = InvoiceDataBase.ReceiptOptions.Merge(null, null);
+            Assert.True(r?.Enabled);
+            Assert.True(r?.ShowPayments);
+            Assert.True(r?.ShowQR);
+
+            r = InvoiceDataBase.ReceiptOptions.Merge(new InvoiceDataBase.ReceiptOptions(), null);
+            Assert.True(r?.Enabled);
+            Assert.True(r?.ShowPayments);
+            Assert.True(r?.ShowQR);
+
+            r = InvoiceDataBase.ReceiptOptions.Merge(new InvoiceDataBase.ReceiptOptions() { Enabled = false }, null);
+            Assert.False(r?.Enabled);
+            Assert.True(r?.ShowPayments);
+            Assert.True(r?.ShowQR);
+
+            r = InvoiceDataBase.ReceiptOptions.Merge(new InvoiceDataBase.ReceiptOptions() { Enabled = false, ShowQR = false }, new InvoiceDataBase.ReceiptOptions() { Enabled = true });
+            Assert.True(r?.Enabled);
+            Assert.True(r?.ShowPayments);
+            Assert.False(r?.ShowQR);
+
+            StoreBlob blob = new StoreBlob();
+            Assert.True(blob.ReceiptOptions.Enabled);
+            blob = JsonConvert.DeserializeObject<StoreBlob>("{}");
+            Assert.True(blob.ReceiptOptions.Enabled);
+            blob = JsonConvert.DeserializeObject<StoreBlob>("{\"receiptOptions\":{\"enabled\": false}}");
+            Assert.False(blob.ReceiptOptions.Enabled);
+            blob = JsonConvert.DeserializeObject<StoreBlob>(JsonConvert.SerializeObject(blob));
+            Assert.False(blob.ReceiptOptions.Enabled);
         }
 
         [Fact]
@@ -1774,6 +1809,33 @@ namespace BTCPayServer.Tests
                    Assert.True( UIManageController.AddApiKeyViewModel.PermissionValueItem.PermissionDescriptions.ContainsKey($"{policy}:"));
                }
             }
+        }
+        [Fact]
+        public void PaymentMethodIdConverterIsGraceful()
+        {
+            var pmi = "\"BTC_hasjdfhasjkfjlajn\"";
+            JsonTextReader reader = new(new StringReader(pmi));
+            reader.Read();
+            Assert.Null(new PaymentMethodIdJsonConverter().ReadJson(reader, typeof(PaymentMethodId), null,
+                JsonSerializer.CreateDefault()));
+        }
+
+        [Fact]
+        public void CanBeBracefulAfterObsoleteShitcoin()
+        {
+            var blob = new StoreBlob();
+            blob.PaymentMethodCriteria = new List<PaymentMethodCriteria>()
+            {
+                new()
+                {
+                    Above = true,
+                    Value = new CurrencyValue() {Currency = "BTC", Value = 0.1m},
+                    PaymentMethod = new PaymentMethodId("BTC", PaymentTypes.BTCLike)
+                }
+            };
+            var newBlob = Encoding.UTF8.GetBytes(
+                new Serializer(null).ToString(blob).Replace( "paymentMethod\":\"BTC\"","paymentMethod\":\"ETH_ZYC\""));
+            Assert.Empty(StoreDataExtensions.GetStoreBlob(new StoreData() {StoreBlob = newBlob}).PaymentMethodCriteria);
         }
     }
 }

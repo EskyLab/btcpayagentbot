@@ -35,6 +35,7 @@ using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Payments.PayJoin.Sender;
+using BTCPayServer.Plugins.PointOfSale.Controllers;
 using BTCPayServer.Security.Bitpay;
 using BTCPayServer.Services;
 using BTCPayServer.Services.Apps;
@@ -185,6 +186,37 @@ namespace BTCPayServer.Tests
             JObject json = JObject.Parse(sresp);
 
             Assert.Equal(description, json["components"]["securitySchemes"]["API_Key"]["description"].Value<string>());
+        }
+        
+        [Fact]
+        [Trait("Integration", "Integration")]
+        public async void CanStoreArbitrarySettingsWithStore()
+        {
+            using var tester = CreateServerTester();
+            await tester.StartAsync();
+            var user = tester.NewAccount();
+            await user.GrantAccessAsync();
+            var settingsRepo = tester.PayTester.ServiceProvider.GetRequiredService<IStoreRepository>();
+            var arbValue = await settingsRepo.GetSettingAsync<string>(user.StoreId,"arbitrary");
+            Assert.Null(arbValue);
+            await settingsRepo.UpdateSetting(user.StoreId, "arbitrary", "saved");
+
+            arbValue = await settingsRepo.GetSettingAsync<string>(user.StoreId,"arbitrary");
+            Assert.Equal("saved", arbValue);
+
+            await settingsRepo.UpdateSetting<TestData>(user.StoreId, "arbitrary", new TestData() { Name = "hello" });
+            var arbData = await settingsRepo.GetSettingAsync<TestData>(user.StoreId, "arbitrary");
+            Assert.Equal("hello", arbData.Name);
+
+            var client = await user.CreateClient();
+            await client.RemoveStore(user.StoreId);
+            tester.Stores.Clear();
+            arbValue = await settingsRepo.GetSettingAsync<string>(user.StoreId, "arbitrary");
+            Assert.Null(arbValue);
+        }
+        class TestData
+        {
+            public string Name { get; set; }
         }
 
         private async Task CheckDeadLinks(Regex regex, HttpClient httpClient, string file)
@@ -1919,20 +1951,25 @@ namespace BTCPayServer.Tests
             await user.GrantAccessAsync();
             var user2 = tester.NewAccount();
             await user2.GrantAccessAsync();
+            var stores = user.GetController<UIStoresController>();
             var apps = user.GetController<UIAppsController>();
             var apps2 = user2.GetController<UIAppsController>();
+            var pos = user.GetController<UIPointOfSaleController>();
             var vm = Assert.IsType<CreateAppViewModel>(Assert.IsType<ViewResult>(apps.CreateApp(user.StoreId)).Model);
+            var appType = AppType.PointOfSale.ToString();
             Assert.NotNull(vm.SelectedAppType);
             Assert.Null(vm.AppName);
             vm.AppName = "test";
-            vm.SelectedAppType = AppType.PointOfSale.ToString();
+            vm.SelectedAppType = appType;
             var redirectToAction = Assert.IsType<RedirectToActionResult>(apps.CreateApp(user.StoreId, vm).Result);
-            Assert.Equal(nameof(apps.UpdatePointOfSale), redirectToAction.ActionName);
+            Assert.Equal(nameof(pos.UpdatePointOfSale), redirectToAction.ActionName);
             var appList = Assert.IsType<ListAppsViewModel>(Assert.IsType<ViewResult>(apps.ListApps(user.StoreId).Result).Model);
             var appList2 =
                 Assert.IsType<ListAppsViewModel>(Assert.IsType<ViewResult>(apps2.ListApps(user2.StoreId).Result).Model);
             var app = appList.Apps[0];
-            apps.HttpContext.SetAppData(new AppData { Id = app.Id, StoreDataId = app.StoreId, Name = app.AppName });
+            var appData = new AppData { Id = app.Id, StoreDataId = app.StoreId, Name = app.AppName, AppType = appType };
+            apps.HttpContext.SetAppData(appData);
+            pos.HttpContext.SetAppData(appData);
             Assert.Single(appList.Apps);
             Assert.Empty(appList2.Apps);
             Assert.Equal("test", appList.Apps[0].AppName);
@@ -1942,7 +1979,7 @@ namespace BTCPayServer.Tests
             Assert.IsType<NotFoundResult>(apps2.DeleteApp(appList.Apps[0].Id));
             Assert.IsType<ViewResult>(apps.DeleteApp(appList.Apps[0].Id));
             redirectToAction = Assert.IsType<RedirectToActionResult>(apps.DeleteAppPost(appList.Apps[0].Id).Result);
-            Assert.Equal(nameof(apps.ListApps), redirectToAction.ActionName);
+            Assert.Equal(nameof(stores.Dashboard), redirectToAction.ActionName);
             appList = Assert.IsType<ListAppsViewModel>(Assert.IsType<ViewResult>(apps.ListApps(user.StoreId).Result).Model);
             Assert.Empty(appList.Apps);
         }
@@ -2597,7 +2634,7 @@ namespace BTCPayServer.Tests
             Assert.Equal("admin@admin.com", (await Assert.IsType<ServerEmailSender>(await emailSenderFactory.GetEmailSender()).GetEmailSettings()).Login);
             Assert.Null(await Assert.IsType<StoreEmailSender>(await emailSenderFactory.GetEmailSender(acc.StoreId)).GetEmailSettings());
 
-            Assert.IsType<RedirectToActionResult>(await acc.GetController<UIStoresController>().Emails(acc.StoreId, new EmailsViewModel(new EmailSettings()
+            Assert.IsType<RedirectToActionResult>(await acc.GetController<UIStoresController>().StoreEmailSettings(acc.StoreId, new EmailsViewModel(new EmailSettings()
             {
                 From = "store@store.com",
                 Login = "store@store.com",

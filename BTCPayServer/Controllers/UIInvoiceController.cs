@@ -22,6 +22,7 @@ using BTCPayServer.Services.Stores;
 using BTCPayServer.Validation;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using NBitpayClient;
 using BitpayCreateInvoiceRequest = BTCPayServer.Models.BitpayCreateInvoiceRequest;
 using StoreData = BTCPayServer.Data.StoreData;
@@ -44,6 +45,7 @@ namespace BTCPayServer.Controllers
         private readonly LanguageService _languageService;
         private readonly ExplorerClientProvider _ExplorerClients;
         private readonly UIWalletsController _walletsController;
+        private readonly LinkGenerator _linkGenerator;
 
         public WebhookSender WebhookNotificationManager { get; }
 
@@ -62,7 +64,8 @@ namespace BTCPayServer.Controllers
             WebhookSender webhookNotificationManager,
             LanguageService languageService,
             ExplorerClientProvider explorerClients,
-            UIWalletsController walletsController)
+            UIWalletsController walletsController,
+            LinkGenerator linkGenerator)
         {
             _CurrencyNameTable = currencyNameTable ?? throw new ArgumentNullException(nameof(currencyNameTable));
             _StoreRepository = storeRepository ?? throw new ArgumentNullException(nameof(storeRepository));
@@ -78,19 +81,20 @@ namespace BTCPayServer.Controllers
             _languageService = languageService;
             this._ExplorerClients = explorerClients;
             _walletsController = walletsController;
+            _linkGenerator = linkGenerator;
         }
 
 
         internal async Task<DataWrapper<InvoiceResponse>> CreateInvoiceCore(BitpayCreateInvoiceRequest invoice,
             StoreData store, string serverUrl, List<string>? additionalTags = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default, Action<InvoiceEntity>? entityManipulator = null)
         {
-            var entity = await CreateInvoiceCoreRaw(invoice, store, serverUrl, additionalTags, cancellationToken);
+            var entity = await CreateInvoiceCoreRaw(invoice, store, serverUrl, additionalTags, cancellationToken, entityManipulator);
             var resp = entity.EntityToDTO();
             return new DataWrapper<InvoiceResponse>(resp) { Facade = "pos/invoice" };
         }
 
-        internal async Task<InvoiceEntity> CreateInvoiceCoreRaw(BitpayCreateInvoiceRequest invoice, StoreData store, string serverUrl, List<string>? additionalTags = null, CancellationToken cancellationToken = default)
+        internal async Task<InvoiceEntity> CreateInvoiceCoreRaw(BitpayCreateInvoiceRequest invoice, StoreData store, string serverUrl, List<string>? additionalTags = null, CancellationToken cancellationToken = default,  Action<InvoiceEntity>? entityManipulator = null)
         {
             var storeBlob = store.GetStoreBlob();
             var entity = _InvoiceRepository.CreateNewInvoice();
@@ -159,16 +163,18 @@ namespace BTCPayServer.Controllers
             entity.PaymentTolerance = storeBlob.PaymentTolerance;
             entity.DefaultPaymentMethod = invoice.DefaultPaymentMethod;
             entity.RequiresRefundEmail = invoice.RequiresRefundEmail;
-            return await CreateInvoiceCoreRaw(entity, store, excludeFilter, null, cancellationToken);
+
+            return await CreateInvoiceCoreRaw(entity, store, excludeFilter, null, cancellationToken, entityManipulator);
         }
 
-        internal async Task<InvoiceEntity> CreateInvoiceCoreRaw(CreateInvoiceRequest invoice, StoreData store, string serverUrl, List<string>? additionalTags = null, CancellationToken cancellationToken = default)
+        internal async Task<InvoiceEntity> CreateInvoiceCoreRaw(CreateInvoiceRequest invoice, StoreData store, string serverUrl, List<string>? additionalTags = null, CancellationToken cancellationToken = default,  Action<InvoiceEntity>? entityManipulator = null)
         {
             var storeBlob = store.GetStoreBlob();
             var entity = _InvoiceRepository.CreateNewInvoice();
             entity.ServerUrl = serverUrl;
             entity.ExpirationTime = entity.InvoiceTime + (invoice.Checkout.Expiration ?? storeBlob.InvoiceExpiration);
             entity.MonitoringExpiration = entity.ExpirationTime + (invoice.Checkout.Monitoring ?? storeBlob.MonitoringExpiration);
+            entity.ReceiptOptions = invoice.Receipt ?? new InvoiceDataBase.ReceiptOptions();
             if (invoice.Metadata != null)
                 entity.Metadata = InvoiceMetadata.FromJObject(invoice.Metadata);
             invoice.Checkout ??= new CreateInvoiceRequest.CheckoutOptions();
@@ -201,10 +207,10 @@ namespace BTCPayServer.Controllers
             entity.RequiresRefundEmail = invoice.Checkout.RequiresRefundEmail;
             if (additionalTags != null)
                 entity.InternalTags.AddRange(additionalTags);
-            return await CreateInvoiceCoreRaw(entity, store, excludeFilter, invoice.AdditionalSearchTerms, cancellationToken);
+            return await CreateInvoiceCoreRaw(entity, store, excludeFilter, invoice.AdditionalSearchTerms, cancellationToken, entityManipulator);
         }
 
-        internal async Task<InvoiceEntity> CreateInvoiceCoreRaw(InvoiceEntity entity, StoreData store, IPaymentFilter? invoicePaymentMethodFilter, string[]? additionalSearchTerms = null, CancellationToken cancellationToken = default)
+        internal async Task<InvoiceEntity> CreateInvoiceCoreRaw(InvoiceEntity entity, StoreData store, IPaymentFilter? invoicePaymentMethodFilter, string[]? additionalSearchTerms = null, CancellationToken cancellationToken = default,  Action<InvoiceEntity>? entityManipulator = null)
         {
             InvoiceLogs logs = new InvoiceLogs();
             logs.Write("Creation of invoice starting", InvoiceEventData.EventSeverity.Info);
@@ -233,7 +239,7 @@ namespace BTCPayServer.Controllers
 
             if (entity.Metadata.BuyerEmail != null)
             {
-                if (!EmailValidator.IsEmail(entity.Metadata.BuyerEmail))
+                if (!MailboxAddressValidator.IsMailboxAddress(entity.Metadata.BuyerEmail))
                     throw new BitpayHttpException(400, "Invalid email");
                 entity.RefundMail = entity.Metadata.BuyerEmail;
             }
@@ -275,18 +281,20 @@ namespace BTCPayServer.Controllers
 
                 // This loop ends with .ToList so we are querying all payment methods at once
                 // instead of sequentially to improve response time
-                foreach (var o in store.GetSupportedPaymentMethods(_NetworkProvider)
+                var x1 = store.GetSupportedPaymentMethods(_NetworkProvider)
                     .Where(s => !excludeFilter.Match(s.PaymentId) &&
                                 _paymentMethodHandlerDictionary.Support(s.PaymentId))
                     .Select(c =>
                         (Handler: _paymentMethodHandlerDictionary[c.PaymentId],
                             SupportedPaymentMethod: c,
                             Network: _NetworkProvider.GetNetwork<BTCPayNetworkBase>(c.PaymentId.CryptoCode)))
-                    .Where(c => c.Network != null)
+                    .Where(c => c.Network != null).ToList();
+                var pmis = x1.Select(tuple => tuple.SupportedPaymentMethod.PaymentId).ToHashSet();
+                foreach (var o in x1
                     .Select(o =>
                         (SupportedPaymentMethod: o.SupportedPaymentMethod,
                             PaymentMethod: CreatePaymentMethodAsync(fetchingByCurrencyPair, o.Handler,
-                                o.SupportedPaymentMethod, o.Network, entity, store, logs)))
+                                o.SupportedPaymentMethod, o.Network, entity, store, logs, pmis)))
                     .ToList())
                 {
                     var paymentMethod = await o.PaymentMethod;
@@ -302,6 +310,8 @@ namespace BTCPayServer.Controllers
                     if (!store.GetSupportedPaymentMethods(_NetworkProvider).Any())
                         errors.AppendLine(
                             "Warning: No wallet has been linked to your BTCPay Store. See the following link for more information on how to connect your store and wallet. (https://docs.btcpayserver.org/WalletSetup/)");
+                    else
+                        errors.AppendLine("Warning: You have payment methods configured but none of them match any of the requested payment methods or the rate is not available. See logs below:");
                     foreach (var error in logs.ToList())
                     {
                         errors.AppendLine(error.ToString());
@@ -317,6 +327,10 @@ namespace BTCPayServer.Controllers
                 entity.InternalTags.Add(AppService.GetAppInternalTag(app.Id));
             }
 
+            if (entityManipulator != null)
+            {
+                entityManipulator.Invoke(entity);
+            }
             using (logs.Measure("Saving invoice"))
             {
                 entity = await _InvoiceRepository.CreateInvoiceAsync(store.Id, entity, additionalSearchTerms);
@@ -356,9 +370,12 @@ namespace BTCPayServer.Controllers
             }).ToArray());
         }
 
-        private async Task<PaymentMethod?> CreatePaymentMethodAsync(Dictionary<CurrencyPair, Task<RateResult>> fetchingByCurrencyPair,
-            IPaymentMethodHandler handler, ISupportedPaymentMethod supportedPaymentMethod, BTCPayNetworkBase network, InvoiceEntity entity,
-            StoreData store, InvoiceLogs logs)
+        private async Task<PaymentMethod?> CreatePaymentMethodAsync(
+            Dictionary<CurrencyPair, Task<RateResult>> fetchingByCurrencyPair,
+            IPaymentMethodHandler handler, ISupportedPaymentMethod supportedPaymentMethod, BTCPayNetworkBase network,
+            InvoiceEntity entity,
+            StoreData store, InvoiceLogs logs,
+            HashSet<PaymentMethodId> invoicePaymentMethods)
         {
             try
             {
@@ -390,7 +407,7 @@ namespace BTCPayServer.Controllers
 
                 using (logs.Measure($"{logPrefix} Payment method details creation"))
                 {
-                    var paymentDetails = await handler.CreatePaymentMethodDetails(logs, supportedPaymentMethod, paymentMethod, store, network, preparePayment);
+                    var paymentDetails = await handler.CreatePaymentMethodDetails(logs, supportedPaymentMethod, paymentMethod, store, network, preparePayment, invoicePaymentMethods);
                     paymentMethod.SetPaymentMethodDetails(paymentDetails);
                 }
 

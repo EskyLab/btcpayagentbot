@@ -37,9 +37,10 @@ namespace BTCPayServer.HostedServices
         }
         public const string OnionNamedClient = "greenfield-webhook.onion";
         public const string ClearnetNamedClient = "greenfield-webhook.clearnet";
+        public const string LoopbackNamedClient = "greenfield-webhook.loopback";
         private HttpClient GetClient(Uri uri)
         {
-            return HttpClientFactory.CreateClient(uri.IsOnion() ? OnionNamedClient : ClearnetNamedClient);
+            return HttpClientFactory.CreateClient(uri.IsOnion() ? OnionNamedClient : uri.IsLoopback ? LoopbackNamedClient : ClearnetNamedClient);
         }
         class WebhookDeliveryRequest
         {
@@ -169,7 +170,7 @@ namespace BTCPayServer.HostedServices
             _processingQueue.Enqueue(context.WebhookId, (cancellationToken) => Process(context, cancellationToken));
         }
 
-        private WebhookInvoiceEvent GetWebhookEvent(WebhookEventType webhookEventType)
+        public static WebhookInvoiceEvent GetWebhookEvent(WebhookEventType webhookEventType)
         {
             switch (webhookEventType)
             {
@@ -192,7 +193,7 @@ namespace BTCPayServer.HostedServices
             }
         }
 
-        private WebhookInvoiceEvent? GetWebhookEvent(InvoiceEvent invoiceEvent)
+        public static WebhookInvoiceEvent? GetWebhookEvent(InvoiceEvent invoiceEvent)
         {
             var eventCode = invoiceEvent.EventCode;
             switch (eventCode)

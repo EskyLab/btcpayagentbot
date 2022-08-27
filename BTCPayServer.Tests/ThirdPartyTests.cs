@@ -72,10 +72,10 @@ namespace BTCPayServer.Tests
         }
 
         [Fact]
-        public void CanQueryDirectProviders()
+        public async Task CanQueryDirectProviders()
         {
             // TODO: Check once in a while whether or not they are working again
-            string[] brokenShitcoinCasinos = { "okex" };
+            string[] brokenShitcoinCasinos = { };
             var factory = FastTests.CreateBTCPayRateFactory();
             var directlySupported = factory.GetSupportedExchanges().Where(s => s.Source == RateSource.Direct)
                 .Select(s => s.Id).ToHashSet();
@@ -126,15 +126,26 @@ namespace BTCPayServer.Tests
                         e => e.CurrencyPair == new CurrencyPair("BTC", "CLP") &&
                              e.BidAsk.Bid > 1.0m); // 1 BTC will always be more than 1 CLP
                 }
+                else if (name == "yadio")
+                {
+                    Assert.Contains(exchangeRates.ByExchange[name],
+                        e => e.CurrencyPair == new CurrencyPair("BTC", "LBP") &&
+                             e.BidAsk.Bid > 1.0m); // 1 BTC will always be more than 1 LBP (I hope)
+                }
                 else
                 {
+                    if (name == "kraken")
+                    {
+                        Assert.Contains(exchangeRates.ByExchange[name], e => e.CurrencyPair == new CurrencyPair("XMR", "BTC") && e.BidAsk.Bid < 1.0m);
+                    }
                     // This check if the currency pair is using right currency pair
                     Assert.Contains(exchangeRates.ByExchange[name],
                         e => (e.CurrencyPair == new CurrencyPair("BTC", "USD") ||
                                 e.CurrencyPair == new CurrencyPair("BTC", "EUR") ||
                                 e.CurrencyPair == new CurrencyPair("BTC", "USDT") ||
                                 e.CurrencyPair == new CurrencyPair("BTC", "USDC") ||
-                                e.CurrencyPair == new CurrencyPair("BTC", "CAD"))
+                                e.CurrencyPair == new CurrencyPair("BTC", "CAD") ||
+                                e.CurrencyPair == new CurrencyPair("BTC", "CLP"))
                                 && e.BidAsk.Bid > 1.0m // 1BTC will always be more than 1USD
                     );
                 }
@@ -148,6 +159,12 @@ namespace BTCPayServer.Tests
 
             // Kraken emit one request only after first GetRates
             factory.Providers["kraken"].GetRatesAsync(default).GetAwaiter().GetResult();
+
+
+            var p = new KrakenExchangeRateProvider();
+            var rates = await p.GetRatesAsync(default);
+            Assert.Contains(rates, e => e.CurrencyPair == new CurrencyPair("XMR", "BTC") && e.BidAsk.Bid < 1.0m);
+            
         }
 
         [Fact]
@@ -203,7 +220,8 @@ namespace BTCPayServer.Tests
                     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
                 request.Headers.TryAddWithoutValidation("User-Agent",
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:75.0) Gecko/20100101 Firefox/75.0");
-                var response = await httpClient.SendAsync(request);
+                using var cts = new CancellationTokenSource(5_000);
+                var response = await httpClient.SendAsync(request, cts.Token);
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 if (uri.Fragment.Length != 0)
                 {
@@ -223,11 +241,11 @@ namespace BTCPayServer.Tests
             }
             catch (Exception) when (retryLeft > 0)
             {
+                retryLeft--;
                 goto retry;
             }
             catch (Exception ex)
             {
-                retryLeft--;
                 var details = ex is EqualException ? (ex as EqualException).Actual : ex.Message;
                 TestLogs.LogInformation($"FAILED: {url} ({file}) {details}");
 

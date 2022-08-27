@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
-using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.BIP78.Sender;
 using BTCPayServer.Client;
@@ -54,6 +53,7 @@ namespace BTCPayServer.Controllers.Greenfield
         private readonly WalletReceiveService _walletReceiveService;
         private readonly IFeeProviderFactory _feeProviderFactory;
         private readonly LabelFactory _labelFactory;
+        private readonly UTXOLocker _utxoLocker;
 
         public GreenfieldStoreOnChainWalletsController(
             IAuthorizationService authorizationService,
@@ -69,7 +69,8 @@ namespace BTCPayServer.Controllers.Greenfield
             EventAggregator eventAggregator,
             WalletReceiveService walletReceiveService,
             IFeeProviderFactory feeProviderFactory,
-            LabelFactory labelFactory
+            LabelFactory labelFactory,
+            UTXOLocker utxoLocker
         )
         {
             _authorizationService = authorizationService;
@@ -86,6 +87,7 @@ namespace BTCPayServer.Controllers.Greenfield
             _walletReceiveService = walletReceiveService;
             _feeProviderFactory = feeProviderFactory;
             _labelFactory = labelFactory;
+            _utxoLocker = utxoLocker;
         }
 
         [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
@@ -188,41 +190,33 @@ namespace BTCPayServer.Controllers.Greenfield
             var walletId = new WalletId(storeId, cryptoCode);
             var walletTransactionsInfoAsync = await _walletRepository.GetWalletTransactionsInfo(walletId);
 
-            var txs = await wallet.FetchTransactions(derivationScheme.AccountDerivation);
-            var filteredFlatList = new List<TransactionInformation>();
-            if (statusFilter is null || !statusFilter.Any() || statusFilter.Contains(TransactionStatus.Confirmed))
+            var preFiltering = true;
+            if (statusFilter?.Any() is true || !string.IsNullOrWhiteSpace(labelFilter))
+                preFiltering = false;
+            var txs = await wallet.FetchTransactionHistory(derivationScheme.AccountDerivation, preFiltering ? skip : 0, preFiltering ? limit : int.MaxValue);
+            if (!preFiltering)
             {
-                filteredFlatList.AddRange(txs.ConfirmedTransactions.Transactions);
-            }
-
-            if (statusFilter is null || !statusFilter.Any() || statusFilter.Contains(TransactionStatus.Unconfirmed))
-            {
-                filteredFlatList.AddRange(txs.UnconfirmedTransactions.Transactions);
-            }
-
-            if (statusFilter is null || !statusFilter.Any() || statusFilter.Contains(TransactionStatus.Replaced))
-            {
-                filteredFlatList.AddRange(txs.ReplacedTransactions.Transactions);
-            }
-
-            if (labelFilter != null)
-            {
-                filteredFlatList = filteredFlatList.Where(information => 
+                var filteredList = new List<TransactionHistoryLine>(txs.Count);
+                foreach (var t in txs)
                 {
-                    walletTransactionsInfoAsync.TryGetValue(information.TransactionId.ToString(), out var transactionInfo);
-
-                    if (transactionInfo != null)
+                    if (!string.IsNullOrWhiteSpace(labelFilter))
                     {
-                        return transactionInfo.Labels.ContainsKey(labelFilter);
+                        walletTransactionsInfoAsync.TryGetValue(t.TransactionId.ToString(), out var transactionInfo);
+                        if (transactionInfo?.Labels.ContainsKey(labelFilter) is true)
+                            filteredList.Add(t);
                     }
-                    else 
+                    if (statusFilter?.Any() is true)
                     {
-                        return false;
+                        if (statusFilter.Contains(TransactionStatus.Confirmed) && t.Confirmations != 0)
+                            filteredList.Add(t);
+                        else if (statusFilter.Contains(TransactionStatus.Unconfirmed) && t.Confirmations == 0)
+                            filteredList.Add(t);
                     }
-                }).ToList();
+                }
+                txs = filteredList;
             }
 
-            var result = filteredFlatList.Skip(skip).Take(limit).Select(information =>
+            var result = txs.Skip(skip).Take(limit).Select(information =>
             {
                 walletTransactionsInfoAsync.TryGetValue(information.TransactionId.ToString(), out var transactionInfo);
                 return ToModel(transactionInfo, information, wallet);
@@ -260,7 +254,8 @@ namespace BTCPayServer.Controllers.Greenfield
             string storeId, 
             string cryptoCode,
             string transactionId,
-            [FromBody] PatchOnChainTransactionRequest request
+            [FromBody] PatchOnChainTransactionRequest request,
+            bool force = false
         )
         {
             if (IsInvalidWalletRequest(cryptoCode, out var network,
@@ -269,7 +264,7 @@ namespace BTCPayServer.Controllers.Greenfield
 
             var wallet = _btcPayWalletProvider.GetWallet(network);
             var tx = await wallet.FetchTransaction(derivationScheme.AccountDerivation, uint256.Parse(transactionId));
-            if (tx is null)
+            if (!force && tx is null)
             {
                 return this.CreateAPIError(404, "transaction-not-found", "The transaction was not found.");
             }
@@ -326,9 +321,11 @@ namespace BTCPayServer.Controllers.Greenfield
             var walletId = new WalletId(storeId, cryptoCode);
             var walletTransactionsInfoAsync = await _walletRepository.GetWalletTransactionsInfo(walletId);
             var utxos = await wallet.GetUnspentCoins(derivationScheme.AccountDerivation);
+            
             return Ok(utxos.Select(coin =>
                 {
                     walletTransactionsInfoAsync.TryGetValue(coin.OutPoint.Hash.ToString(), out var info);
+                    var labels = info?.Labels ?? new Dictionary<string, LabelData>();
                     return new OnChainWalletUTXOData()
                     {
                         Outpoint = coin.OutPoint,
@@ -376,10 +373,20 @@ namespace BTCPayServer.Controllers.Greenfield
                 return this.CreateValidationError(ModelState);
             }
 
+            if (request.SelectedInputs != null && request.ExcludeUnconfirmed == true)
+            {
+                ModelState.AddModelError(
+                    nameof(request.ExcludeUnconfirmed),
+                    "Can't automatically exclude unconfirmed UTXOs while selection custom inputs"
+                );
+
+                return this.CreateValidationError(ModelState);
+            }
+
             var explorerClient = _explorerClientProvider.GetExplorerClient(cryptoCode);
             var wallet = _btcPayWalletProvider.GetWallet(network);
 
-            var utxos = await wallet.GetUnspentCoins(derivationScheme.AccountDerivation);
+            var utxos = await wallet.GetUnspentCoins(derivationScheme.AccountDerivation, request.ExcludeUnconfirmed);
             if (request.SelectedInputs != null || !utxos.Any())
             {
                 utxos = utxos.Where(coin => request.SelectedInputs?.Contains(coin.OutPoint) ?? true)
@@ -662,7 +669,7 @@ namespace BTCPayServer.Controllers.Greenfield
         }
 
         private OnChainWalletTransactionData ToModel(WalletTransactionInfo? walletTransactionsInfoAsync,
-            TransactionInformation tx,
+            TransactionHistoryLine tx,
             BTCPayWallet wallet)
         {
             return new OnChainWalletTransactionData()
@@ -674,9 +681,8 @@ namespace BTCPayServer.Controllers.Greenfield
                 BlockHash = tx.BlockHash,
                 BlockHeight = tx.Height,
                 Confirmations = tx.Confirmations,
-                Timestamp = tx.Timestamp,
-                Status = tx.Confirmations > 0 ? TransactionStatus.Confirmed :
-                    tx.ReplacedBy != null ? TransactionStatus.Replaced : TransactionStatus.Unconfirmed
+                Timestamp = tx.SeenAt,
+                Status = tx.Confirmations > 0 ? TransactionStatus.Confirmed : TransactionStatus.Unconfirmed
             };
         }
     }

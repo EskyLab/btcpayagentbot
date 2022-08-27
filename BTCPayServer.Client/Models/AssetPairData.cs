@@ -1,22 +1,32 @@
+using Newtonsoft.Json;
+
 namespace BTCPayServer.Client.Models;
 
+[JsonObject(MemberSerialization.OptIn)]
 public class AssetPairData
 {
-
     public AssetPairData()
     {
     }
     
-    public AssetPairData(string AssetBought, string AssetSold)
+    public AssetPairData(string assetBought, string assetSold, decimal minimumTradeQty)
     {
-        this.AssetBought = AssetBought;
-        this.AssetSold = AssetSold;
+        AssetBought = assetBought;
+        AssetSold = assetSold;
+        MinimumTradeQty = minimumTradeQty;
     }
-    
+
+    [JsonProperty]
     public string AssetBought { set; get; }
+
+    [JsonProperty]
     public string AssetSold { set; get; }
 
-    public string ToString()
+    [JsonProperty]
+    public decimal MinimumTradeQty { set; get; }
+
+    
+    public override string ToString()
     {
         return AssetBought + "/" + AssetSold;
     }

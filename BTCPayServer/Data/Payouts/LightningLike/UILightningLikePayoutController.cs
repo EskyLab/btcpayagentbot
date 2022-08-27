@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using NBitcoin;
 
 namespace BTCPayServer.Data.Payouts.LightningLike
 {
@@ -103,7 +104,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             {
                 var blob = payoutData.GetBlob(_btcPayNetworkJsonSerializerSettings);
 
-                return new ConfirmVM()
+                return new ConfirmVM
                 {
                     Amount = blob.CryptoAmount.Value,
                     Destination = blob.Destination,
@@ -119,7 +120,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             await SetStoreContext();
             
             var pmi = new PaymentMethodId(cryptoCode, PaymentTypes.LightningLike);
-            var payoutHandler = _payoutHandlers.FindPayoutHandler(pmi);
+            var payoutHandler = (LightningLikePayoutHandler) _payoutHandlers.FindPayoutHandler(pmi);
 
             await using var ctx = _applicationDbContextFactory.CreateContext();
 
@@ -128,42 +129,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             var network = _btcPayNetworkProvider.GetNetwork<BTCPayNetwork>(pmi.CryptoCode);
 
             //we group per store and init the transfers by each
-            async Task TrypayBolt(ILightningClient lightningClient, PayoutBlob payoutBlob, PayoutData payoutData, BOLT11PaymentRequest bolt11PaymentRequest)
-            {
-                var boltAmount = bolt11PaymentRequest.MinimumAmount.ToDecimal(LightMoneyUnit.BTC);
-                if (boltAmount != payoutBlob.CryptoAmount)
-                {
-                    results.Add(new ResultVM()
-                    {
-                        PayoutId = payoutData.Id,
-                        Result = PayResult.Error,
-                        Message = $"The BOLT11 invoice amount did not match the payout's amount ({boltAmount} instead of {payoutBlob.CryptoAmount})",
-                        Destination = payoutBlob.Destination
-                    });
-                    return;
-                }
-                var result = await lightningClient.Pay(bolt11PaymentRequest.ToString());
-                if (result.Result == PayResult.Ok)
-                {
-                    results.Add(new ResultVM()
-                    {
-                        PayoutId = payoutData.Id,
-                        Result = result.Result,
-                        Destination = payoutBlob.Destination
-                    });
-                    payoutData.State = PayoutState.Completed;
-                }
-                else
-                {
-                    results.Add(new ResultVM()
-                    {
-                        PayoutId = payoutData.Id,
-                        Result = result.Result,
-                        Destination = payoutBlob.Destination
-                    });
-                }
-            }
-
+          
             var authorizedForInternalNode = (await _authorizationService.AuthorizeAsync(User, null, new PolicyRequirement(Policies.CanModifyServerSettings))).Succeeded;
             foreach (var payoutDatas in payouts)
             {
@@ -184,8 +150,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
                             PayoutId = payoutData.Id,
                             Result = PayResult.Error,
                             Destination = blob.Destination,
-                            Message =
-                                $"You are currently using the internal lightning node for this payout's store but you are not a server admin."
+                            Message = "You are currently using the internal Lightning node for this payout's store but you are not a server admin."
                         });
                     }
 
@@ -197,6 +162,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
                         _lightningClientFactoryService);
                 foreach (var payoutData in payoutDatas)
                 {
+                    ResultVM result;
                     var blob = payoutData.GetBlob(_btcPayNetworkJsonSerializerSettings);
                     var claim = await payoutHandler.ParseClaimDestination(pmi, blob.Destination);
                     try
@@ -204,77 +170,168 @@ namespace BTCPayServer.Data.Payouts.LightningLike
                         switch (claim.destination)
                         {
                             case LNURLPayClaimDestinaton lnurlPayClaimDestinaton:
-                                var endpoint = LNURL.LNURL.Parse(lnurlPayClaimDestinaton.LNURL, out var tag);
-                                var lightningPayoutHandler = (LightningLikePayoutHandler)payoutHandler;
-                                var httpClient = lightningPayoutHandler.CreateClient(endpoint);
-                                var lnurlInfo =
-                                    (LNURLPayRequest)await LNURL.LNURL.FetchInformation(endpoint, "payRequest",
-                                        httpClient);
-                                var lm = new LightMoney(blob.CryptoAmount.Value, LightMoneyUnit.BTC);
-                                if (lm > lnurlInfo.MaxSendable || lm < lnurlInfo.MinSendable)
+                                var lnurlResult = await GetInvoiceFromLNURL(payoutData, payoutHandler, blob,
+                                    lnurlPayClaimDestinaton, network.NBitcoinNetwork);
+                                if (lnurlResult.Item2 is not null)
                                 {
-                                    results.Add(new ResultVM()
-                                    {
-                                        PayoutId = payoutData.Id,
-                                        Result = PayResult.Error,
-                                        Destination = blob.Destination,
-                                        Message =
-                                            $"The LNURL provided would not generate an invoice of {lm.MilliSatoshi}msats"
-                                    });
+                                    result = lnurlResult.Item2;
                                 }
                                 else
                                 {
-                                    try
-                                    {
-                                        var lnurlPayRequestCallbackResponse =
-                                            await lnurlInfo.SendRequest(lm, network.NBitcoinNetwork, httpClient);
-
-                                        await TrypayBolt(client, blob, payoutData, lnurlPayRequestCallbackResponse.GetPaymentRequest(network.NBitcoinNetwork));
-                                    }
-                                    catch (LNUrlException e)
-                                    {
-                                        results.Add(new ResultVM
-                                        {
-                                            PayoutId = payoutData.Id,
-                                            Result = PayResult.Error,
-                                            Destination = blob.Destination,
-                                            Message = e.Message
-                                        });
-                                    }
+                                    result = await TrypayBolt(client, blob, payoutData, lnurlResult.Item1, pmi);
                                 }
 
                                 break;
 
                             case BoltInvoiceClaimDestination item1:
-                                await TrypayBolt(client, blob, payoutData, item1.PaymentRequest);
+                               result =  await TrypayBolt(client, blob, payoutData, item1.PaymentRequest, pmi);
 
                                 break;
                             default:
-                                results.Add(new ResultVM
+                                result= new ResultVM
                                 {
                                     PayoutId = payoutData.Id,
                                     Result = PayResult.Error,
                                     Destination = blob.Destination,
                                     Message = claim.error
-                                });
+                                };
                                 break;
                         }
                     }
-                    catch (Exception)
+                    catch (Exception exception)
                     {
-                        results.Add(new ResultVM
+                        result = new ResultVM
                         {
                             PayoutId = payoutData.Id,
                             Result = PayResult.Error,
-                            Destination = blob.Destination
-                        });
+                            Destination = blob.Destination,
+                            Message = exception.Message
+                        };
                     }
+                    results.Add(result);
                 }
             }
 
             await ctx.SaveChangesAsync();
             return View("LightningPayoutResult", results);
         }
+        public static async Task<(BOLT11PaymentRequest, ResultVM)> GetInvoiceFromLNURL(PayoutData payoutData,
+            LightningLikePayoutHandler handler,PayoutBlob blob, LNURLPayClaimDestinaton lnurlPayClaimDestinaton, Network network)
+        {
+            var endpoint = lnurlPayClaimDestinaton.LNURL.IsValidEmail()
+                ? LNURL.LNURL.ExtractUriFromInternetIdentifier(lnurlPayClaimDestinaton.LNURL)
+                : LNURL.LNURL.Parse(lnurlPayClaimDestinaton.LNURL, out _);
+            var httpClient = handler.CreateClient(endpoint);
+            var lnurlInfo =
+                (LNURLPayRequest)await LNURL.LNURL.FetchInformation(endpoint, "payRequest",
+                    httpClient);
+            var lm = new LightMoney(blob.CryptoAmount.Value, LightMoneyUnit.BTC);
+            if (lm > lnurlInfo.MaxSendable || lm < lnurlInfo.MinSendable)
+            {
+                return (null, new ResultVM
+                {
+                    PayoutId = payoutData.Id,
+                    Result = PayResult.Error,
+                    Destination = blob.Destination,
+                    Message =
+                        $"The LNURL provided would not generate an invoice of {lm.MilliSatoshi}msats"
+                });
+            }
+            
+            try
+            {
+                var lnurlPayRequestCallbackResponse =
+                    await lnurlInfo.SendRequest(lm, network, httpClient);
+
+                return (lnurlPayRequestCallbackResponse.GetPaymentRequest(network), null);
+            }
+            catch (LNUrlException e)
+            {
+                return (null,
+                    new ResultVM
+                    {
+                        PayoutId = payoutData.Id,
+                        Result = PayResult.Error,
+                        Destination = blob.Destination,
+                        Message = e.Message
+                    });
+            }
+        }
+        
+        
+        public static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(20);
+        public static async Task<ResultVM> TrypayBolt(
+            ILightningClient lightningClient, PayoutBlob payoutBlob, PayoutData payoutData, BOLT11PaymentRequest bolt11PaymentRequest, 
+            PaymentMethodId pmi)
+        {
+            var boltAmount = bolt11PaymentRequest.MinimumAmount.ToDecimal(LightMoneyUnit.BTC);
+            if (boltAmount != payoutBlob.CryptoAmount)
+            {
+                
+                payoutData.State = PayoutState.Cancelled;
+                return new ResultVM
+                {
+                    PayoutId = payoutData.Id,
+                    Result = PayResult.Error,
+                    Message = $"The BOLT11 invoice amount ({boltAmount} {pmi.CryptoCode}) did not match the payout's amount ({payoutBlob.CryptoAmount.GetValueOrDefault()} {pmi.CryptoCode})",
+                    Destination = payoutBlob.Destination
+                };
+            }
+
+            var proofBlob = new PayoutLightningBlob() {PaymentHash = bolt11PaymentRequest.PaymentHash.ToString()};
+            try
+            {
+                using var cts = new CancellationTokenSource(SendTimeout);
+                var result = await lightningClient.Pay(bolt11PaymentRequest.ToString(),
+                    new PayInvoiceParams()
+                    {
+                        Amount = bolt11PaymentRequest.MinimumAmount == LightMoney.Zero
+                            ? new LightMoney((decimal)payoutBlob.CryptoAmount, LightMoneyUnit.BTC)
+                            : null
+                    }, cts.Token);
+                string message = null;
+                if (result.Result == PayResult.Ok)
+                {
+                    message = result.Details?.TotalAmount != null
+                        ? $"Paid out {result.Details.TotalAmount.ToDecimal(LightMoneyUnit.BTC)}"
+                        : null;
+                    payoutData.State = PayoutState.Completed;
+                    try
+                    {
+                       var payment = await  lightningClient.GetPayment(bolt11PaymentRequest.PaymentHash.ToString());
+                       proofBlob.Preimage = payment.Preimage;
+                    }
+                    catch (Exception e)
+                    {
+                    }
+                }
+                
+                payoutData.SetProofBlob(proofBlob, null);
+                return new ResultVM
+                {
+                    PayoutId = payoutData.Id,
+                    Result = result.Result,
+                    Destination = payoutBlob.Destination,
+                    Message = message
+                };
+            }
+            catch (Exception ex) when (ex is TaskCanceledException or OperationCanceledException)
+            {
+                // Timeout, potentially caused by hold invoices
+                // Payment will be saved as pending, the LightningPendingPayoutListener will handle settling/cancelling
+                payoutData.State = PayoutState.InProgress;
+                
+                payoutData.SetProofBlob(proofBlob, null);
+                return new ResultVM
+                {
+                    PayoutId = payoutData.Id,
+                    Result = PayResult.Ok,
+                    Destination = payoutBlob.Destination,
+                    Message = "The payment timed out. We will verify if it completed later."
+                };
+            }
+        }
+
 
         private async Task SetStoreContext()
         {

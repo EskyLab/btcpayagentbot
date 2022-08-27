@@ -34,7 +34,9 @@
                         "in": "query",
                         "required": false,
                         "description": "Array of statuses of invoices to be fetched",
-                        "$ref": "#/components/schemas/InvoiceStatus"
+                        "schema": {
+                            "$ref": "#/components/schemas/InvoiceStatus"
+                        }
                     },
                     {
                         "name": "textSearch",
@@ -50,14 +52,18 @@
                         "in": "query",
                         "required": false,
                         "description": "Start date of the period to retrieve invoices",
-                        "$ref": "#/components/schemas/UnixTimestamp"
+                        "schema": {
+                            "$ref": "#/components/schemas/UnixTimestamp"
+                        }
                     },
                     {
                         "name": "endDate",
                         "in": "query",
                         "required": false,
                         "description": "End date of the period to retrieve invoices",
-                        "$ref": "#/components/schemas/UnixTimestamp"
+                        "schema": {
+                            "$ref": "#/components/schemas/UnixTimestamp"
+                        }
                     },
                     {
                         "name": "skip",
@@ -644,17 +650,6 @@
                     }
                 }
             },
-            "AddCustomerEmailRequest": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "email": {
-                        "type": "string",
-                        "nullable": false,
-                        "description": "Sets the customer email, if it was not set before."
-                    }
-                }
-            },
             "InvoiceStatusMark": {
                 "type": "string",
                 "description": "",
@@ -714,6 +709,11 @@
                         "nullable": true,
                         "$ref": "#/components/schemas/CheckoutOptions",
                         "description": "Additional settings to customize the checkout flow"
+                    },
+                    "receipt": {
+                        "nullable": true,
+                        "$ref": "#/components/schemas/ReceiptOptions",
+                        "description": "Additional settings to customize the public receipt"
                     }
                 }
             },
@@ -1061,21 +1061,28 @@
                     }
                 }
             },
-            "SpeedPolicy": {
-                "type": "string",
-                "description": "",
-                "x-enumNames": [
-                    "HighSpeed",
-                    "MediumSpeed",
-                    "LowSpeed",
-                    "LowMediumSpeed"
-                ],
-                "enum": [
-                    "HighSpeed",
-                    "MediumSpeed",
-                    "LowSpeed",
-                    "LowMediumSpeed"
-                ]
+            "ReceiptOptions": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "nullable": true,
+                        "description": "A public page will be accessible once the invoice is settled. If null or unspecified, it will fallback to the store's settings. (The default store settings is true)"
+                    },
+                    "showQR": {
+                        "type": "boolean",
+                        "nullable": true,
+                        "default": null,
+                        "description": "Show the QR code of the receipt in the public receipt page. If null or unspecified, it will fallback to the store's settings. (The default store setting is true)"
+                    },
+                    "showPayments": {
+                        "type": "boolean",
+                        "nullable": true,
+                        "default": null,
+                        "description": "Show the payment list in the public receipt page. If null or unspecified, it will fallback to the store's settings. (The default store setting is true)"
+                    }
+                }
             },
             "InvoicePaymentMethodDataModel": {
                 "type": "object",

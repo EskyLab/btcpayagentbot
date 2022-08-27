@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using BTCPayServer.Client.JsonConverters;
 using BTCPayServer.Client.Models;
+using BTCPayServer.Controllers;
 using BTCPayServer.JsonConverters;
 using BTCPayServer.Payments;
 using BTCPayServer.Rating;
@@ -29,6 +30,7 @@ namespace BTCPayServer.Data
             ShowRecommendedFee = true;
             RecommendedFeeBlockTarget = 1;
             PaymentMethodCriteria = new List<PaymentMethodCriteria>();
+            ReceiptOptions = InvoiceDataBase.ReceiptOptions.CreateDefault();
         }
         
         [JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
@@ -103,7 +105,10 @@ namespace BTCPayServer.Data
         public bool AutoDetectLanguage { get; set; }
 
         public bool RateScripting { get; set; }
-
+#nullable enable
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public InvoiceDataBase.ReceiptOptions ReceiptOptions { get; set; }
+#nullable restore
         public string RateScript { get; set; }
 
         public bool AnyoneCanInvoice { get; set; }
@@ -178,6 +183,8 @@ namespace BTCPayServer.Data
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.IgnoreAndPopulate)]
         [JsonConverter(typeof(TimeSpanJsonConverter.Days))]
         public TimeSpan RefundBOLT11Expiration { get; set; }
+
+        public List<UIStoresController.StoreEmailRule> EmailRules { get; set; }
 
         public IPaymentFilter GetExcludedPaymentMethods()
         {

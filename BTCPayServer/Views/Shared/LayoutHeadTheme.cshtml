@@ -1,9 +1,6 @@
-@using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Services
-@inject ISettingsRepository _settingsRepository
 @inject ThemeSettings Theme
-@addTagHelper *, BundlerMinifier.TagHelpers
 
 @if (Theme.CustomTheme)
 {

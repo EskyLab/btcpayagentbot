@@ -169,7 +169,6 @@ namespace BTCPayServer.Controllers
             public bool IsDownload { get; set; }
         }
 
-
         [HttpPost("server/files/upload")]
         public async Task<IActionResult> CreateFiles(List<IFormFile> files)
         {
@@ -236,10 +235,10 @@ namespace BTCPayServer.Controllers
             if (forceChoice || savedSettings == null)
             {
                 var providersList = _StorageProviderServices.Select(a =>
-                    new SelectListItem(a.StorageProvider().ToString(), a.StorageProvider().ToString())
+                    new SelectListItem(typeof(StorageProvider).DisplayName(a.StorageProvider().ToString()), a.StorageProvider().ToString())
                 );
 
-                return View(new ChooseStorageViewModel()
+                return View(new ChooseStorageViewModel
                 {
                     ProvidersList = providersList,
                     ShowChangeWarning = savedSettings != null,

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Client.Models;
@@ -9,11 +10,12 @@ using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Services;
-using BTCPayServer.Validation;
 using LNURL;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NBitcoin;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Data.Payouts.LightningLike
 {
@@ -41,7 +43,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
 
         public bool CanHandle(PaymentMethodId paymentMethod)
         {
-            return paymentMethod.PaymentType == LightningPaymentType.Instance &&
+            return (paymentMethod.PaymentType == LightningPaymentType.Instance  ||  paymentMethod.PaymentType == LNURLPayPaymentType.Instance ) &&
                    _btcPayNetworkProvider.GetNetwork<BTCPayNetwork>(paymentMethod.CryptoCode)?.SupportLightning is true;
         }
 
@@ -64,7 +66,7 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             try
             {
                 string lnurlTag = null;
-                var lnurl = EmailValidator.IsEmail(destination)
+                var lnurl = destination.IsValidEmail()
                     ? LNURL.LNURL.ExtractUriFromInternetIdentifier(destination)
                     : LNURL.LNURL.Parse(destination, out lnurlTag);
 
@@ -118,7 +120,17 @@ namespace BTCPayServer.Data.Payouts.LightningLike
 
         public IPayoutProof ParseProof(PayoutData payout)
         {
-            return null;
+            BitcoinLikePayoutHandler.ParseProofType(payout.Proof, out var raw, out var proofType);
+            if (proofType is null)
+            {
+                return null;
+            }
+            if (proofType == ManualPayoutProof.Type)
+            {
+                return raw.ToObject<ManualPayoutProof>();
+            }
+
+            return raw.ToObject<PayoutLightningBlob>();
         }
 
         public void StartBackgroundCheck(Action<Type[]> subscribe)
@@ -175,5 +187,6 @@ namespace BTCPayServer.Data.Payouts.LightningLike
             return Task.FromResult<IActionResult>(new RedirectToActionResult("ConfirmLightningPayout",
                 "UILightningLikePayout", new { cryptoCode = paymentMethodId.CryptoCode, payoutIds }));
         }
+        
     }
 }

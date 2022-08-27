@@ -23,14 +23,14 @@ document.addEventListener("DOMContentLoaded",function (ev) {
         data: function () {
             return {
                 amount: null,
-                expanded: false,
-                lnurl: window.lnurl,
-                currentMode: 'standard'
+                expanded: false
             }
         },
         computed: {
             canExpand: function(){
-                return !this.expanded && this.active && (this.perk.price.type !== 2 || this.perk.price.value) && (this.perk.inventory==null || this.perk.inventory > 0)
+                return !this.expanded 
+                    && this.active && 
+                    (this.perk.inventory==null || this.perk.inventory > 0)
             }
         },
         methods: {
