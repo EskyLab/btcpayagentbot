@@ -1,0 +1,17 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "amd64.Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[env]
+BTCPAY_POSTGRES="host=${{PGHOST}};port=${{PGPORT}};database=${{PGDATABASE}};username=${{PGUSER}};password=${{PGPASSWORD}}"
+BTCPAY_NETWORK="mainnet"
+BTCPAY_BIND="0.0.0.0:8080"
+BTCPAY_BTCEXPLORERURL="http://127.0.0.1:32838"
+BTCPAY_BTCLIGHTNING="true"
+BTCPAY_BTCTRANSACTIONSPERSBLOCK="false"
